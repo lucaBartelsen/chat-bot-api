@@ -11,9 +11,21 @@ const creatorsRoutes = require('./routes/creators.routes');
 // Initialize express app
 const app = express();
 
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'http://78.47.123.81:8080',  // Your frontend 
+    'http://localhost:5173',     // For local development with Vite
+    'http://localhost:3000'      // For other local development
+  ],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
 // Middleware
 app.use(helmet()); // Security headers
-app.use(cors()); // Enable CORS
+app.use(cors(corsOptions)); // Enable CORS
 app.use(express.json()); // Parse JSON bodies
 app.use(morgan('dev')); // Logging
 
