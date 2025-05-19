@@ -18,8 +18,6 @@ services:
     volumes:
       - ./app:/app/app
       - ./main.py:/app/main.py
-      - ./prisma:/app/prisma
-      - ./init-database.sh:/init-database.sh
     networks:
       - app_network
     restart: always
