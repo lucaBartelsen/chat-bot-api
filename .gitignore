@@ -1,11 +1,57 @@
+# File: .gitignore
+# Path: fanfix-api/.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
 .env
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
 
-# testing
-/coverage
+# Prisma
+node_modules/
 
-# production
-/build
+# Logs
+*.log
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Local data
+data/
+
+# macOS
+.DS_Store
+
+# Docker
+.docker/
