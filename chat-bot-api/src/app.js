@@ -13,13 +13,9 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: [
-    'http://78.47.123.81:8080',  // Your frontend 
-    'http://localhost:5173',     // For local development with Vite
-    'http://localhost:3000'      // For other local development
-  ],
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true
 };
 
