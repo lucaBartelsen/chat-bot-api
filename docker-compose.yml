@@ -1,8 +1,3 @@
-# File: docker-compose.yml
-# Path: fanfix-api/docker-compose.yml
-
-version: '3.8'
-
 services:
   api:
     build:
@@ -19,9 +14,12 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CORS_ORIGINS=https://chatsassistant.com,https://*.chatsassistant.com,http://localhost:3000
       - DOMAIN=chatsassistant.com
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}  # Added for the init script
     volumes:
       - ./app:/app/app
       - ./main.py:/app/main.py
+      - ./prisma:/app/prisma
+      - ./init-database.sh:/init-database.sh
     networks:
       - app_network
     restart: always
