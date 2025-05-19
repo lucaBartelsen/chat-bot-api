@@ -164,3 +164,65 @@ current_superuser = fastapi_users.current_user(active=True, superuser=True)
 async def get_prisma():
     async with get_prisma_client() as prisma:
         yield prisma
+
+async def create_admin_user(email: str, password: str):
+    """
+    Create a new admin user with superuser privileges.
+    This function is called from the Makefile.
+    
+    Args:
+        email: The email address for the admin user
+        password: The password for the admin user
+    """
+    try:
+        async with get_prisma_client() as prisma:
+            # Check if user already exists
+            existing_user = await prisma.user.find_unique(
+                where={"email": email}
+            )
+            
+            if existing_user:
+                print(f"User with email {email} already exists.")
+                
+                # If the user exists but is not a superuser, make them a superuser
+                if not existing_user.is_superuser:
+                    await prisma.user.update(
+                        where={"id": existing_user.id},
+                        data={"is_superuser": True, "is_active": True, "is_verified": True}
+                    )
+                    print(f"User {email} has been granted admin privileges.")
+                else:
+                    print(f"User {email} is already an admin.")
+                
+                return
+            
+            # Create a new user with admin privileges
+            # Hash the password
+            from app.core.security import get_password_hash
+            hashed_password = get_password_hash(password)
+            
+            # Create the user
+            user = await prisma.user.create(
+                data={
+                    "email": email,
+                    "hashed_password": hashed_password,
+                    "is_superuser": True,
+                    "is_active": True,
+                    "is_verified": True
+                }
+            )
+            
+            # Create default user preferences
+            await prisma.userpreferences.create(
+                data={
+                    "userId": user.id,
+                    "numSuggestions": 3,
+                    "modelName": "gpt-3.5-turbo"
+                }
+            )
+            
+            print(f"Admin user {email} created successfully!")
+    
+    except Exception as e:
+        print(f"Error creating admin user: {e}")
+        raise

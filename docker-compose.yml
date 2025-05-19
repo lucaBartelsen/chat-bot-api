@@ -5,33 +5,70 @@ version: '3.8'
 
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/fanfix_db
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/chat_assistant_db
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET=${JWT_SECRET}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      - db
+      - CORS_ORIGINS=https://chatsassistant.com,https://*.chatsassistant.com,http://localhost:3000
+      - DOMAIN=chatsassistant.com
     volumes:
       - ./app:/app/app
       - ./main.py:/app/main.py
-    command: >
-      bash -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    networks:
+      - app_network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   db:
-    image: pgvector/pgvector:pg14
+    image: ankane/pgvector:latest
     volumes:
       - postgres_data:/var/lib/postgresql/data/
-      - ./migrations/0001_initial.sql:/docker-entrypoint-initdb.d/0001_initial.sql
     environment:
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_USER=postgres
-      - POSTGRES_DB=fanfix_db
+      - POSTGRES_DB=chat_assistant_db
     ports:
       - "5432:5432"
+    networks:
+      - app_network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/www:/var/www/html
+    depends_on:
+      - api
+    networks:
+      - app_network
+    restart: always
+
+networks:
+  app_network:
+    driver: bridge
 
 volumes:
   postgres_data:

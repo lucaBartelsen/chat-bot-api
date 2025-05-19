@@ -58,7 +58,7 @@ A FastAPI-based backend for generating AI-powered chat suggestions for creators 
 5. Initialize and migrate the database:
    ```bash
    # Install pgvector extension in your PostgreSQL database
-   psql -U postgres -d fanfix_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
+   psql -U postgres -d chat_assistant_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
    
    # Generate Prisma client
    prisma db push

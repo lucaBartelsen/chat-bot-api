@@ -21,13 +21,23 @@ prisma = Prisma()
 async def lifespan(app: FastAPI):
     # Connect to database on startup
     await prisma.connect()
+    
+    # Initialize database if tables don't exist
+    try:
+        from app.core.database import init_db_pool
+        db_pool = await init_db_pool()
+        await db_pool.close()
+        print("Database initialized successfully")
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+    
     yield
     # Disconnect from database on shutdown
     await prisma.disconnect()
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
-    title="FanFix ChatAssist API",
+    title="ChatAssist API",
     description="AI-powered chat suggestions for creators",
     version="1.0.0",
     lifespan=lifespan
