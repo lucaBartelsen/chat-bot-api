@@ -1,5 +1,4 @@
-# File: prisma/schema.prisma
-# Path: fanfix-api/prisma/schema.prisma
+/// File: prisma/schema.prisma
 
 datasource db {
   provider = "postgresql"
