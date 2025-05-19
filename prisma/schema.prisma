@@ -79,5 +79,5 @@ model VectorStore {
   timestamp         DateTime  @default(now())
 
   @@index([creatorId])
-  @@index([embedding], type: Ivfflat)
+  @@index([embedding], type: "ivfflat")
 }
