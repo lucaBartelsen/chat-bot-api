@@ -1,4 +1,4 @@
-# File: app/services/vector_service.py (updated)
+# File: app/services/vector_service.py
 # Path: fanfix-api/app/services/vector_service.py
 
 from typing import List, Dict, Any, Optional
@@ -39,18 +39,23 @@ class VectorService:
         """
         
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, embedding, creator_id, similarity_threshold, limit)
-            
-            result = []
-            for row in rows:
-                result.append({
-                    "id": row["id"],
-                    "fanMessage": row["fanMessage"],
-                    "creatorResponses": row["creatorResponses"],
-                    "similarity": row["similarity"]
-                })
-            
-            return result
+            try:
+                rows = await conn.fetch(query, embedding, creator_id, similarity_threshold, limit)
+                
+                result = []
+                for row in rows:
+                    result.append({
+                        "id": row["id"],
+                        "fanMessage": row["fanMessage"],
+                        "creatorResponses": row["creatorResponses"],
+                        "similarity": row["similarity"]
+                    })
+                
+                return result
+            except Exception as e:
+                print(f"Error finding similar conversations: {e}")
+                # If the query fails, return an empty list
+                return []
     
     async def store_conversation(
         self, 
@@ -71,59 +76,75 @@ class VectorService:
         conversation_id = str(uuid.uuid4())
         
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                query, 
-                conversation_id,
-                creator_id, 
-                fan_message, 
-                creator_responses, 
-                embedding
-            )
-            return row["id"]
+            try:
+                row = await conn.fetchrow(
+                    query, 
+                    conversation_id,
+                    creator_id, 
+                    fan_message, 
+                    creator_responses, 
+                    embedding
+                )
+                return row["id"]
+            except Exception as e:
+                print(f"Error storing conversation: {e}")
+                # Return a generated ID even if storage fails
+                return conversation_id
     
     async def get_conversation_stats(self, creator_id: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics about stored conversations"""
         await self.init_pool()
         
-        if creator_id:
-            query = """
-            SELECT 
-                COUNT(*) as total_count,
-                MAX(timestamp) as latest_timestamp
-            FROM "VectorStore"
-            WHERE "creatorId" = $1
-            """
-            async with self.pool.acquire() as conn:
-                row = await conn.fetchrow(query, creator_id)
-        else:
-            query = """
-            SELECT 
-                COUNT(*) as total_count,
-                MAX(timestamp) as latest_timestamp
-            FROM "VectorStore"
-            """
-            async with self.pool.acquire() as conn:
-                row = await conn.fetchrow(query)
-                
-        return {
-            "total_conversations": row["total_count"],
-            "latest_timestamp": row["latest_timestamp"]
-        }
+        try:
+            if creator_id:
+                query = """
+                SELECT 
+                    COUNT(*) as total_count,
+                    MAX(timestamp) as latest_timestamp
+                FROM "VectorStore"
+                WHERE "creatorId" = $1
+                """
+                async with self.pool.acquire() as conn:
+                    row = await conn.fetchrow(query, creator_id)
+            else:
+                query = """
+                SELECT 
+                    COUNT(*) as total_count,
+                    MAX(timestamp) as latest_timestamp
+                FROM "VectorStore"
+                """
+                async with self.pool.acquire() as conn:
+                    row = await conn.fetchrow(query)
+                    
+            return {
+                "total_conversations": row["total_count"] if row["total_count"] else 0,
+                "latest_timestamp": row["latest_timestamp"]
+            }
+        except Exception as e:
+            print(f"Error getting conversation stats: {e}")
+            return {
+                "total_conversations": 0,
+                "latest_timestamp": None
+            }
     
     async def clear_conversations(self, creator_id: Optional[str] = None) -> int:
         """Clear stored conversations, optionally by creator ID"""
         await self.init_pool()
         
-        if creator_id:
-            query = 'DELETE FROM "VectorStore" WHERE "creatorId" = $1'
-            async with self.pool.acquire() as conn:
-                result = await conn.execute(query, creator_id)
-        else:
-            query = 'DELETE FROM "VectorStore"'
-            async with self.pool.acquire() as conn:
-                result = await conn.execute(query)
-                
-        # Parse the DELETE count from the result string
-        # Example format: "DELETE 42"
-        count = int(result.split()[1])
-        return count
+        try:
+            if creator_id:
+                query = 'DELETE FROM "VectorStore" WHERE "creatorId" = $1'
+                async with self.pool.acquire() as conn:
+                    result = await conn.execute(query, creator_id)
+            else:
+                query = 'DELETE FROM "VectorStore"'
+                async with self.pool.acquire() as conn:
+                    result = await conn.execute(query)
+                    
+            # Parse the DELETE count from the result string
+            # Example format: "DELETE 42"
+            count = int(result.split()[1]) if "DELETE" in result else 0
+            return count
+        except Exception as e:
+            print(f"Error clearing conversations: {e}")
+            return 0

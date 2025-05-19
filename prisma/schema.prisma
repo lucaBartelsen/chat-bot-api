@@ -79,5 +79,6 @@ model VectorStore {
   timestamp         DateTime  @default(now())
 
   @@index([creatorId])
-  @@index([embedding], type: "ivfflat")
+  // Use raw SQL to create vector index instead
+  // We'll handle the vector index creation through SQL in the database.py file
 }
