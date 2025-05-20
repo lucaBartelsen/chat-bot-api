@@ -12,6 +12,9 @@ from fastapi_users.authentication import (
     BearerTransport,
     JWTStrategy,
 )
+# Import types needed for type annotations
+from fastapi_users.models import UP, ID
+
 # Import your custom PrismaUserDatabase from local db.py instead of fastapi_users
 from app.auth.db import PrismaUserDatabase
 import uuid
@@ -105,6 +108,7 @@ auth_backend = AuthenticationBackend(
 )
 
 # FastAPI Users instance
+# Using the syntax from version 12.1.2
 fastapi_users = FastAPIUsers(
     get_user_manager,
     [auth_backend],

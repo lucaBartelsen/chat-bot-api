@@ -23,7 +23,7 @@ from app.auth.models import (
 # Create the auth router
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Include FastAPI Users routers
+# Include FastAPI Users routers with proper model parameters
 router.include_router(
     fastapi_users.get_auth_router(auth_backend),
     prefix="/jwt",
@@ -32,16 +32,17 @@ router.include_router(
 # Import user schemas for router registration
 from app.auth.models import User, UserCreate, UserUpdate
 
+# Following fastapi-users 12.1.2 API
 router.include_router(
     fastapi_users.get_register_router(User, UserCreate),
 )
 
 router.include_router(
-    fastapi_users.get_reset_password_router(User),
+    fastapi_users.get_reset_password_router(),
 )
 
 router.include_router(
-    fastapi_users.get_verify_router(User),
+    fastapi_users.get_verify_router(),
 )
 
 router.include_router(
