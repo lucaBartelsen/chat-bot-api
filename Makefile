@@ -40,9 +40,6 @@ help:
 	@echo "${YELLOW}Shell Access:${NC}"
 	@echo "  ${GREEN}shell-api${NC}      - Open shell in API container"
 	@echo "  ${GREEN}shell-db${NC}       - Open shell in database container"
-	@echo ""
-	@echo "${YELLOW}SSL Management:${NC}"
-	@echo "  ${GREEN}ssl${NC}            - Generate SSL certificates (if needed)"
 
 # Setup development environment
 setup:
@@ -100,16 +97,6 @@ clean:
 	@echo "${GREEN}Removing all containers, images, and volumes...${NC}"
 	$(DOCKER_COMPOSE) down -v
 	$(DOCKER) system prune -af --volumes
-
-# SSL certificate generation
-ssl:
-	@echo "${GREEN}Generating SSL certificates...${NC}"
-	mkdir -p nginx/ssl
-	if [ ! -f nginx/ssl/dhparam.pem ]; then \
-		echo "Generating DH parameters (this may take a few minutes)..."; \
-		openssl dhparam -out nginx/ssl/dhparam.pem 2048; \
-	fi
-	@echo "${YELLOW}NOTE: You still need to add your Cloudflare certificates to nginx/ssl/${NC}"
 
 # Shell access to containers
 shell-api:

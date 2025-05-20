@@ -24,7 +24,7 @@ async def login_access_token(
     """
     # Find user by email
     query = select(User).where(User.email == form_data.username)
-    result = await session.exec(query)
+    result = await session.execute(query)
     user = result.scalar_one_or_none()
     
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -62,7 +62,7 @@ async def register_user(
     """
     # Check if user already exists
     query = select(User).where(User.email == email)
-    result = await session.exec(query)
+    result = await session.execute(query)
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
@@ -108,7 +108,7 @@ async def get_user_preferences(
     Get user preferences
     """
     query = select(UserPreference).where(UserPreference.user_id == current_user.id)
-    result = await session.exec(query)
+    result = await session.execute(query)
     preferences = result.scalar_one_or_none()
     
     if not preferences:
@@ -130,7 +130,7 @@ async def update_user_preferences(
     Update user preferences
     """
     query = select(UserPreference).where(UserPreference.user_id == current_user.id)
-    result = await session.exec(query)
+    result = await session.execute(query)
     db_preferences = result.scalar_one_or_none()
     
     if not db_preferences:

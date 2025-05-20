@@ -18,7 +18,7 @@ async def list_creators(
 ):
     """List all creators"""
     query = select(Creator).offset(skip).limit(limit)
-    result = await session.exec(query)
+    result = await session.execute(query)
     return result.scalars().all()
 
 @router.get("/{creator_id}", response_model=Creator)
@@ -29,7 +29,7 @@ async def get_creator(
 ):
     """Get creator details by ID"""
     query = select(Creator).where(Creator.id == creator_id)
-    result = await session.exec(query)
+    result = await session.execute(query)
     creator = result.scalar_one_or_none()
     
     if not creator:
@@ -73,7 +73,7 @@ async def update_creator(
         )
     
     query = select(Creator).where(Creator.id == creator_id)
-    result = await session.exec(query)
+    result = await session.execute(query)
     db_creator = result.scalar_one_or_none()
     
     if not db_creator:
@@ -107,7 +107,7 @@ async def store_creator_style(
     
     # Check if creator exists
     query = select(Creator).where(Creator.id == creator_id)
-    result = await session.exec(query)
+    result = await session.execute(query)
     creator = result.scalar_one_or_none()
     
     if not creator:
@@ -142,7 +142,7 @@ async def add_style_example(
     
     # Check if creator exists
     query = select(Creator).where(Creator.id == creator_id)
-    result = await session.exec(query)
+    result = await session.execute(query)
     creator = result.scalar_one_or_none()
     
     if not creator:
@@ -171,5 +171,5 @@ async def get_creator_examples(
 ):
     """Get style examples for a creator"""
     query = select(StyleExample).where(StyleExample.creator_id == creator_id).offset(skip).limit(limit)
-    result = await session.exec(query)
+    result = await session.execute(query)
     return result.scalars().all()
