@@ -12,7 +12,7 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET=${JWT_SECRET}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CORS_ORIGINS=https://chatsassistant.com,https://*.chatsassistant.com,http://localhost:3000
+      - CORS_ORIGINS=["https://chatsassistant.com", "https://*.chatsassistant.com", "http://localhost:3000"]
       - DOMAIN=chatsassistant.com
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}  # Added for the init script
     volumes:
