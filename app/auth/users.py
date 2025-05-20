@@ -1,7 +1,7 @@
 # File: app/auth/users.py (updated)
 # Path: fanfix-api/app/auth/users.py
 
-from typing import Optional, Union, AsyncGenerator
+from typing import Optional, Union, AsyncGenerator, Dict, Any
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, Request
@@ -12,10 +12,8 @@ from fastapi_users.authentication import (
     BearerTransport,
     JWTStrategy,
 )
-# Import types needed for type annotations
-from fastapi_users.models import UP, ID
 
-# Import your custom PrismaUserDatabase from local db.py instead of fastapi_users
+# Import your custom PrismaUserDatabase from local db.py
 from app.auth.db import PrismaUserDatabase
 import uuid
 
@@ -108,8 +106,8 @@ auth_backend = AuthenticationBackend(
 )
 
 # FastAPI Users instance
-# Using the syntax from version 12.1.2
-fastapi_users = FastAPIUsers(
+# Version 12.1.2 of fastapi-users does use generic types in FastAPIUsers
+fastapi_users = FastAPIUsers[User, uuid.UUID](
     get_user_manager,
     [auth_backend],
 )

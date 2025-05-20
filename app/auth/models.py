@@ -1,10 +1,10 @@
-# File: app/auth/models.py (updated)
+# File: app/auth/models.py (updated for fastapi-users 12.1.2)
 # Path: fanfix-api/app/auth/models.py
 
 from typing import Optional
 import uuid
 from pydantic import BaseModel, EmailStr
-from fastapi_users.schemas import BaseUserCreate, BaseUserUpdate
+from fastapi_users import schemas
 from datetime import datetime
 
 # User base model
@@ -26,14 +26,14 @@ class User(UserBase):
     id: uuid.UUID
 
 # User creation model
-class UserCreate(BaseUserCreate):
+class UserCreate(schemas.BaseUserCreate):
     """User creation model"""
     is_active: Optional[bool] = True
     is_superuser: Optional[bool] = False
     is_verified: Optional[bool] = False
 
 # User update model
-class UserUpdate(BaseUserUpdate):
+class UserUpdate(schemas.BaseUserUpdate):
     """User update model"""
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
