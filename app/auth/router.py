@@ -1,4 +1,4 @@
-# File: app/auth/router.py
+# File: app/auth/router.py (updated)
 # Path: fanfix-api/app/auth/router.py
 
 from datetime import datetime
@@ -60,7 +60,13 @@ async def get_preferences(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Preferences not found"
         )
-    return preferences
+    return UserPreferencesRead(
+        user_id=current_user.id,
+        selected_creator_id=uuid.UUID(preferences.selectedCreatorId) if preferences.selectedCreatorId else None,
+        openai_api_key=preferences.openaiApiKey,
+        model_name=preferences.modelName,
+        num_suggestions=preferences.numSuggestions
+    )
 
 @router.patch("/me/preferences", response_model=UserPreferencesRead)
 async def update_preferences(
@@ -103,7 +109,13 @@ async def update_preferences(
             data=update_data
         )
     
-    return preferences
+    return UserPreferencesRead(
+        user_id=current_user.id,
+        selected_creator_id=uuid.UUID(preferences.selectedCreatorId) if preferences.selectedCreatorId else None,
+        openai_api_key=preferences.openaiApiKey,
+        model_name=preferences.modelName,
+        num_suggestions=preferences.numSuggestions
+    )
 
 @router.post("/me/update-last-login")
 async def update_last_login(

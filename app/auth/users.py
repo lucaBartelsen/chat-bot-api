@@ -5,7 +5,8 @@ from typing import Optional, Union, AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, Request
-from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
+from fastapi_users import FastAPIUsers
+from fastapi_users.manager import BaseUserManager, UUIDIDMixin
 from fastapi_users.authentication import (
     AuthenticationBackend,
     BearerTransport,
@@ -101,7 +102,7 @@ auth_backend = AuthenticationBackend(
 )
 
 # FastAPI Users instance
-fastapi_users = FastAPIUsers[User, uuid.UUID](
+fastapi_users = FastAPIUsers(
     get_user_manager,
     [auth_backend],
 )
