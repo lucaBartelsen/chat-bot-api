@@ -1,7 +1,8 @@
 import os
 from typing import List, Optional
 
-from pydantic import BaseSettings, validator
+from pydantic_settings import BaseSettings
+from pydantic import field_validator  # Updated from validator
 
 class Settings(BaseSettings):
     # API settings
@@ -29,8 +30,10 @@ class Settings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4"
     SUGGESTION_COUNT: int = 3
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # Pydantic v2 configuration
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+    }
 
 settings = Settings()

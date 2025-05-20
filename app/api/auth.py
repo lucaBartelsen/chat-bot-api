@@ -4,6 +4,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
+from pydantic import ValidationError
 
 from app.models.user import User, UserPreference
 from app.core.database import get_session
@@ -23,7 +24,7 @@ async def login_access_token(
     """
     # Find user by email
     query = select(User).where(User.email == form_data.username)
-    result = await session.execute(query)
+    result = await session.exec(query)
     user = result.scalar_one_or_none()
     
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -61,7 +62,7 @@ async def register_user(
     """
     # Check if user already exists
     query = select(User).where(User.email == email)
-    result = await session.execute(query)
+    result = await session.exec(query)
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
@@ -107,7 +108,7 @@ async def get_user_preferences(
     Get user preferences
     """
     query = select(UserPreference).where(UserPreference.user_id == current_user.id)
-    result = await session.execute(query)
+    result = await session.exec(query)
     preferences = result.scalar_one_or_none()
     
     if not preferences:
@@ -129,7 +130,7 @@ async def update_user_preferences(
     Update user preferences
     """
     query = select(UserPreference).where(UserPreference.user_id == current_user.id)
-    result = await session.execute(query)
+    result = await session.exec(query)
     db_preferences = result.scalar_one_or_none()
     
     if not db_preferences:
@@ -141,7 +142,8 @@ async def update_user_preferences(
         return preferences_update
     
     # Update preferences
-    for key, value in preferences_update.dict(exclude_unset=True).items():
+    # Updated for Pydantic v2: dict() -> model_dump()
+    for key, value in preferences_update.model_dump(exclude_unset=True).items():
         if key != "user_id":  # Prevent changing user_id
             setattr(db_preferences, key, value)
     

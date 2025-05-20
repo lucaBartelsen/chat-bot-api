@@ -3,7 +3,7 @@ from typing import Any, List, Optional, Dict
 from sqlmodel import Field, Relationship, SQLModel
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, text, JSON, String
-from pydantic import validator
+from pydantic import field_validator  # Updated from validator
 
 from app.models.core import BaseModel
 

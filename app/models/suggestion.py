@@ -11,6 +11,19 @@ class SuggestionRequest(BaseModel):
     use_similar_conversations: bool = True
     similarity_threshold: Optional[float] = 0.7
     
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "creator_id": 1,
+                "fan_message": "Hey, how are you today?",
+                "model": "gpt-4",
+                "suggestion_count": 3,
+                "use_similar_conversations": True,
+                "similarity_threshold": 0.7
+            }
+        }
+    }
+    
 # Single message suggestion
 class MessageSuggestion(BaseModel):
     text: str

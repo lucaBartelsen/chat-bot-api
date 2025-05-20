@@ -76,10 +76,10 @@ class AIService:
         """Format the system message with style instructions"""
         
         system_message = f"""You are an AI assistant helping to generate message suggestions for {creator.name}. 
-Your task is to write responses that perfectly match {creator.name}'s writing style.
+    Your task is to write responses that perfectly match {creator.name}'s writing style.
 
-Here's information about {creator.name}'s writing style:
-"""
+    Here's information about {creator.name}'s writing style:
+    """
         
         # Add style details if available
         if style:
