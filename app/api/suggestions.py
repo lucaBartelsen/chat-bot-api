@@ -2,7 +2,7 @@
 # Path: fanfix-api/app/api/suggestions.py
 
 from typing import Any, Dict, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 import uuid
 
 from prisma import Prisma
@@ -103,7 +103,7 @@ async def get_suggestion_stats(
     )
     return stats
 
-@router.post("/clear", response_model=Dict[str, Any])
+@router.post("/clear", status_code=status.HTTP_200_OK, response_model=Dict[str, Any])
 async def clear_stored_conversations(
     creator_id: uuid.UUID = None,
     current_user: User = Depends(current_active_user)

@@ -2,7 +2,7 @@
 # Path: fanfix-api/app/api/creators.py
 
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 import uuid
 
 from prisma import Prisma
@@ -259,7 +259,7 @@ async def delete_style_example(
     example_id: uuid.UUID,
     current_user: User = Depends(require_creator_manager),
     prisma: Prisma = Depends(get_prisma)
-) -> Any:
+) -> None:
     """
     Delete a style example (admin only)
     """
@@ -281,5 +281,3 @@ async def delete_style_example(
     await prisma.styleexample.delete(
         where={"id": str(example_id)}
     )
-    
-    return None
