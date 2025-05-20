@@ -11,7 +11,8 @@ from fastapi_users.authentication import (
     BearerTransport,
     JWTStrategy,
 )
-from fastapi_users.db import PrismaUserDatabase
+# Import your custom PrismaUserDatabase from local db.py instead of fastapi_users
+from app.auth.db import PrismaUserDatabase
 import uuid
 
 from prisma import Prisma
@@ -28,60 +29,9 @@ async def get_prisma_client() -> AsyncGenerator[Prisma, None]:
     finally:
         await client.disconnect()
 
-# User database adapter to work with Prisma
-class PrismaUserDatabaseAdapter(PrismaUserDatabase):
-    """Custom adapter for FastAPI Users to work with Prisma ORM"""
-    
-    async def get(self, id: uuid.UUID) -> Optional[UserDB]:
-        user = await self.prisma_client.user.find_unique(
-            where={"id": str(id)},
-        )
-        if user:
-            return UserDB(**user.dict())
-        return None
-
-    async def get_by_email(self, email: str) -> Optional[UserDB]:
-        user = await self.prisma_client.user.find_unique(
-            where={"email": email},
-        )
-        if user:
-            return UserDB(**user.dict())
-        return None
-
-    async def create(self, user: UserDB) -> UserDB:
-        created_user = await self.prisma_client.user.create(
-            data={
-                "id": str(user.id),
-                "email": user.email,
-                "hashed_password": user.hashed_password,
-                "is_active": user.is_active,
-                "is_superuser": user.is_superuser,
-                "is_verified": user.is_verified,
-            }
-        )
-        return UserDB(**created_user.dict())
-
-    async def update(self, user: UserDB) -> UserDB:
-        updated_user = await self.prisma_client.user.update(
-            where={"id": str(user.id)},
-            data={
-                "email": user.email,
-                "hashed_password": user.hashed_password,
-                "is_active": user.is_active,
-                "is_superuser": user.is_superuser,
-                "is_verified": user.is_verified,
-            }
-        )
-        return UserDB(**updated_user.dict())
-
-    async def delete(self, user: UserDB) -> None:
-        await self.prisma_client.user.delete(
-            where={"id": str(user.id)},
-        )
-
-# Get user DB from Prisma client
+# Get user DB from Prisma client - using your custom PrismaUserDatabase
 async def get_user_db(prisma_client: Prisma = Depends(get_prisma_client)):
-    yield PrismaUserDatabaseAdapter(prisma_client)
+    yield PrismaUserDatabase(prisma_client, user_table_name="User")
 
 # User manager to handle user operations
 class UserManager(UUIDIDMixin, BaseUserManager[UserCreate, UserDB]):
@@ -131,7 +81,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[UserCreate, UserDB]):
             print(f"Error deleting user preferences: {e}")
 
 # Get user manager
-async def get_user_manager(user_db: PrismaUserDatabaseAdapter = Depends(get_user_db)):
+async def get_user_manager(user_db = Depends(get_user_db)):
     yield UserManager(user_db)
 
 # Configure JWT authentication
