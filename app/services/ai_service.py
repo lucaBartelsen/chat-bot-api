@@ -5,9 +5,10 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from langchain.chat_models import ChatOpenAI
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.schema import HumanMessage, SystemMessage
+# Updated imports for langchain 0.1.0+
+from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
+from langchain.schema.messages import HumanMessage, SystemMessage
 import openai
 
 class AIService:
@@ -25,12 +26,13 @@ class AIService:
     async def get_embedding(self, text: str) -> List[float]:
         """Get embedding vector for text using OpenAI's embeddings API"""
         try:
-            # Using direct OpenAI API for embeddings
-            response = await openai.Embedding.acreate(
+            client = openai.OpenAI(api_key=self.api_key)
+            # Updated for OpenAI API v1.0+
+            response = client.embeddings.create(
                 input=text,
                 model="text-embedding-ada-002"
             )
-            return response["data"][0]["embedding"]
+            return response.data[0].embedding
         except Exception as e:
             print(f"Error getting embedding: {e}")
             raise
