@@ -44,18 +44,21 @@ class UserManager(UUIDIDMixin, BaseUserManager[UserCreate, UserDB]):
         
         # Create default user preferences
         async with get_prisma_client() as prisma:
-            await prisma.userpreferences.create(
-                data={
-                    "userId": str(user.id),
-                    "numSuggestions": 3,
-                    "modelName": settings.DEFAULT_MODEL
-                }
-            )
+            try:
+                await prisma.userpreferences.create(
+                    data={
+                        "userId": str(user.id),
+                        "numSuggestions": 3,
+                        "modelName": settings.DEFAULT_MODEL
+                    }
+                )
+            except Exception as e:
+                print(f"Error creating user preferences: {e}")
 
     async def on_after_forgot_password(
         self, user: UserDB, token: str, request: Optional[Request] = None
     ):
-        print(f"User {user.id} has forgot their password. Reset token: {token}")
+        print(f"User {user.id} has forgotten their password. Reset token: {token}")
 
     async def on_after_request_verify(
         self, user: UserDB, token: str, request: Optional[Request] = None

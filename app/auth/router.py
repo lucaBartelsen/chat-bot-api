@@ -14,6 +14,8 @@ from app.auth.users import (
 )
 from app.auth.models import (
     User,
+    UserCreate,
+    UserUpdate,
     UserPreferencesRead,
     UserPreferencesUpdate
 )
@@ -27,20 +29,23 @@ router.include_router(
     prefix="/jwt",
 )
 
+# Import user schemas for router registration
+from app.auth.models import User, UserCreate, UserUpdate
+
 router.include_router(
-    fastapi_users.get_register_router(),
+    fastapi_users.get_register_router(User, UserCreate),
 )
 
 router.include_router(
-    fastapi_users.get_reset_password_router(),
+    fastapi_users.get_reset_password_router(User),
 )
 
 router.include_router(
-    fastapi_users.get_verify_router(),
+    fastapi_users.get_verify_router(User),
 )
 
 router.include_router(
-    fastapi_users.get_users_router(),
+    fastapi_users.get_users_router(User, UserUpdate),
 )
 
 # Custom user routes
