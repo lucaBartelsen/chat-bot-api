@@ -32,7 +32,10 @@ ENV PRISMA_HOME_DIR=/app/.cache/prisma-python
 # Copy project files
 COPY . .
 
-# Generate Prisma client
+# Grant permissions to the prisma package directory
+RUN chmod -R 777 /usr/local/lib/python3.10/site-packages/prisma
+
+# Generate Prisma client (as root)
 RUN prisma generate
 
 # Make the init script executable

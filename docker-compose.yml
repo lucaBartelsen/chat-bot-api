@@ -15,9 +15,11 @@ services:
       - CORS_ORIGINS=["https://chatsassistant.com", "https://*.chatsassistant.com", "http://localhost:3000"]
       - DOMAIN=chatsassistant.com
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}  # Added for the init script
+      - PRISMA_HOME_DIR=/app/.cache/prisma-python
     volumes:
       - ./app:/app/app
       - ./main.py:/app/main.py
+      - prisma_cache:/app/.cache/prisma-python
     networks:
       - app_network
     restart: always
@@ -68,3 +70,4 @@ networks:
 
 volumes:
   postgres_data:
+  prisma_cache:
