@@ -1,190 +1,126 @@
-# File: app/services/ai_service.py (updated)
-# Path: fanfix-api/app/services/ai_service.py
-
-import json
-from typing import List, Dict, Any, Optional
-from datetime import datetime
-
-# Updated imports for langchain 0.1.0+
-from langchain_openai import ChatOpenAI
-from langchain_openai import OpenAIEmbeddings
-from langchain.schema.messages import HumanMessage, SystemMessage
+import time
+from typing import List, Optional, Tuple
 import openai
+from openai import OpenAI
+
+from app.models.creator import Creator, CreatorStyle, StyleExample
+from app.models.suggestion import SuggestionRequest, MessageSuggestion
+from app.services.vector_service import VectorService
 
 class AIService:
-    def __init__(self, api_key: str, model_name: str = "gpt-3.5-turbo"):
-        self.api_key = api_key
-        self.model_name = model_name
-        self.embeddings = OpenAIEmbeddings(openai_api_key=api_key)
-        self.chat_model = ChatOpenAI(
-            openai_api_key=api_key,
-            model_name=model_name,
-            temperature=0.7
+    """Service for AI-powered suggestion generation"""
+    
+    def __init__(self, api_key: Optional[str] = None):
+        self.client = OpenAI(api_key=api_key)
+    
+    async def generate_suggestions(
+        self,
+        request: SuggestionRequest,
+        creator: Creator,
+        style: CreatorStyle,
+        examples: List[StyleExample],
+        similar_conversations: List[Tuple[any, float]] = None,
+        temperature: float = 0.7
+    ) -> List[MessageSuggestion]:
+        """Generate AI suggestions based on creator style and examples"""
+        
+        # Start timing
+        start_time = time.time()
+        
+        # Format system message with style instructions
+        system_message = self._format_system_message(creator, style)
+        
+        # Add examples to the system message
+        system_message += self._format_examples(examples)
+        
+        # Add similar conversations if available
+        if similar_conversations and len(similar_conversations) > 0:
+            system_message += "\n\nHere are some similar conversations from the past:\n"
+            for conv, similarity in similar_conversations:
+                system_message += f"\nFan: {conv.fan_message}\nCreator: {conv.creator_response}\n"
+        
+        # Create the messages array
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": f"Fan message: {request.fan_message}\n\nGenerate {request.suggestion_count} different response suggestions that match the creator's style."}
+        ]
+        
+        # Select the model to use
+        model = request.model or "gpt-4"
+        
+        # Make API call to OpenAI
+        response = await self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            n=request.suggestion_count,
+            max_tokens=1000
         )
-        openai.api_key = api_key
+        
+        # Process response into suggestions
+        suggestions = []
+        for choice in response.choices:
+            suggestions.append(
+                MessageSuggestion(
+                    text=choice.message.content.strip(),
+                    confidence=1.0 - (choice.index * 0.1)  # Simple confidence estimation
+                )
+            )
+        
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        return suggestions, model, processing_time
     
-    async def get_embedding(self, text: str) -> List[float]:
-        """Get embedding vector for text using OpenAI's embeddings API"""
-        try:
-            client = openai.OpenAI(api_key=self.api_key)
-            # Updated for OpenAI API v1.0+
-            response = client.embeddings.create(
-                input=text,
-                model="text-embedding-ada-002"
-            )
-            return response.data[0].embedding
-        except Exception as e:
-            print(f"Error getting embedding: {e}")
-            raise
-    
-    async def get_suggestions(
-        self, 
-        fan_message: str, 
-        chat_history: List[Dict[str, str]], 
-        creator_style: Optional[Dict[str, Any]],
-        similar_conversations: List[Dict[str, Any]],
-        num_suggestions: int = 3,
-        regenerate: bool = False
-    ) -> List[Dict[str, Any]]:
-        """Get response suggestions using LangChain and OpenAI"""
-        try:
-            # Build system prompt with creator style and similar conversations
-            system_prompt = self._build_system_prompt(
-                creator_style, 
-                similar_conversations, 
-                num_suggestions,
-                regenerate
-            )
-            
-            # Format chat history
-            formatted_history = []
-            for msg in chat_history:
-                if msg["role"] == "user":
-                    formatted_history.append(HumanMessage(content=msg["content"]))
-                else:
-                    formatted_history.append(SystemMessage(content=msg["content"]))
-                    
-            # Add current message
-            formatted_history.append(HumanMessage(content=fan_message))
-            
-            # Get response using LangChain
-            response = await self.chat_model.agenerate(
-                [formatted_history], 
-                response_format={"type": "json_object"}
-            )
-            
-            # Parse suggestions from the response
-            suggestions = self._parse_suggestions(
-                response.generations[0][0].text, 
-                num_suggestions
-            )
-            
-            return suggestions
-        except Exception as e:
-            print(f"Error getting suggestions: {e}")
-            raise
-    
-    def _build_system_prompt(
-        self, 
-        creator_style: Optional[Dict[str, Any]], 
-        similar_conversations: List[Dict[str, Any]], 
-        num_suggestions: int, 
-        regenerate: bool
-    ) -> str:
-        # Create system prompt similar to the one in your Node.js implementation
-        # This would include creator style preferences and similar conversations
-        prompt = f"""# Role and Objective
-You are an AI assistant for the FanFix platform that creates personalized response suggestions for creators to send to their fans. Your goal is to help creators maintain engaging conversations by generating {num_suggestions} natural-sounding replies that match their personal writing style.
+    def _format_system_message(self, creator: Creator, style: CreatorStyle) -> str:
+        """Format the system message with style instructions"""
+        
+        system_message = f"""You are an AI assistant helping to generate message suggestions for {creator.name}. 
+Your task is to write responses that perfectly match {creator.name}'s writing style.
 
-# Instructions
-* Generate exactly {num_suggestions} different response options
-* STRONGLY PREFER multi-message responses (2-3 connected messages) over single messages
-* Look for natural breaking points in longer responses (after emojis, between thoughts, questions)
-* Split messages that contain multiple thoughts, questions, or tone shifts
-* Match the creator's writing style precisely as described
+Here's information about {creator.name}'s writing style:
 """
         
-        # Add writing style info if available
-        if creator_style:
-            prompt += f"\n## Writing Style Implementation\n"
-            prompt += f"* Precisely follow the provided writing style\n"
+        # Add style details if available
+        if style:
+            if style.case_style:
+                system_message += f"- Case Style: {style.case_style}\n"
             
-            if creator_style.get('caseStyle'):
-                prompt += f"* Case style: {creator_style.get('caseStyle')}\n"
-                
-            if creator_style.get('approvedEmojis') and len(creator_style.get('approvedEmojis', [])) > 0:
-                emoji_list = ', '.join(creator_style.get('approvedEmojis', []))
-                prompt += f"* Approved emojis: {emoji_list}\n"
-                
-            if creator_style.get('textReplacements'):
-                prompt += f"* Text replacements: {json.dumps(creator_style.get('textReplacements'))}\n"
-                
-            if creator_style.get('styleInstructions'):
-                prompt += f"* Additional style guidance: {creator_style.get('styleInstructions')}\n"
-                
-            if creator_style.get('messageLengthPreference'):
-                prompt += f"* Message length preference: {creator_style.get('messageLengthPreference')}\n"
+            if style.approved_emojis:
+                system_message += f"- Approved Emojis: {', '.join(style.approved_emojis)}\n"
             
-        # Add example conversations if available
-        if similar_conversations and len(similar_conversations) > 0:
-            prompt += "\n# Example Conversations\n"
-            for i, convo in enumerate(similar_conversations):
-                prompt += f"\n## Example {i+1}\n"
-                prompt += f"### Fan Message\n\"{convo['fanMessage']}\"\n\n"
-                prompt += f"### Creator Response\n"
-                for resp in convo['creatorResponses']:
-                    prompt += f"\"{resp}\"\n"
+            if style.text_replacements:
+                system_message += "- Text Replacements:\n"
+                for original, replacement in style.text_replacements.items():
+                    system_message += f"  * Replace '{original}' with '{replacement}'\n"
+            
+            if style.common_abbreviations:
+                system_message += "- Common Abbreviations:\n"
+                for abbr, full in style.common_abbreviations.items():
+                    system_message += f"  * {abbr} = {full}\n"
+            
+            if style.message_length_preferences:
+                system_message += "- Message Length Preferences:\n"
+                for k, v in style.message_length_preferences.items():
+                    system_message += f"  * {k}: {v}\n"
+            
+            if style.style_instructions:
+                system_message += f"\nAdditional Style Instructions:\n{style.style_instructions}\n"
+            
+            if style.tone_range:
+                system_message += f"- Tone Range: {', '.join(style.tone_range)}\n"
         
-        # Add regeneration instruction if needed
-        if regenerate:
-            prompt += "\n# Final Instructions\nThis is a regeneration request - provide COMPLETELY DIFFERENT suggestions than before.\n"
-            
-        prompt += "\nReturn only valid JSON following this structure:\n"
-        prompt += """```
-{
-  "suggestions": [
-    {
-      "type": "multi",
-      "messages": ["First message here 😅", "Second message continues the thought"]
-    },
-    {
-      "type": "multi",
-      "messages": ["Another approach", "With follow-up", "Maybe a third"]
-    }
-  ]
-}
-```"""
-        
-        return prompt
+        return system_message
     
-    def _parse_suggestions(self, content: str, requested_count: int) -> List[Dict[str, Any]]:
-        """Parse JSON response from the API into suggestion format"""
-        try:
-            # Parse JSON response
-            if isinstance(content, str):
-                response_data = json.loads(content)
-            else:
-                response_data = content
-                
-            if "suggestions" in response_data and isinstance(response_data["suggestions"], list):
-                suggestions = response_data["suggestions"]
-                # Validate and clean suggestions
-                valid_suggestions = []
-                for sugg in suggestions[:requested_count]:
-                    if sugg.get("type") in ["single", "multi"] and "messages" in sugg:
-                        # Ensure messages is a list of strings
-                        messages = [str(msg) for msg in sugg["messages"] if msg]
-                        if messages:
-                            valid_suggestions.append({
-                                "type": sugg["type"],
-                                "messages": messages
-                            })
-                
-                return valid_suggestions
-            
-            # Fallback: create simple suggestions from text
-            return [{"type": "single", "messages": [content.strip()]}]
-        except Exception as e:
-            print(f"Error parsing suggestions: {e}")
-            # Fallback
-            return [{"type": "single", "messages": ["I'd be happy to chat with you!"]}]
+    def _format_examples(self, examples: List[StyleExample]) -> str:
+        """Format examples for the system message"""
+        
+        if not examples or len(examples) == 0:
+            return ""
+        
+        example_text = "\n\nHere are some examples of fan messages and how the creator responded:\n"
+        
+        for example in examples:
+            example_text += f"\nFan: {example.fan_message}\nCreator: {example.creator_response}\n"
+        
+        return example_text

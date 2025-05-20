@@ -1,29 +1,30 @@
-# File: requirements.txt (updated)
-# Path: fanfix-api/requirements.txt
-
-# FastAPI and server
+# Web Framework
 fastapi==0.115.12
-uvicorn==0.34.2
-pydantic
-pydantic-settings
-python-dotenv==1.0.0
-python-multipart==0.0.6
-
-# Authentication
-fastapi-users[sqlalchemy]==12.1.2  # Includes SQLAlchemy adapter which we'll use as a reference
-python-jose[cryptography]==3.3.0  # Use python-jose instead of jose
-passlib[bcrypt]==1.7.4  # Make sure bcrypt is included
+uvicorn==0.34.2  # ASGI server
 
 # Database
-prisma==0.11.0
-asyncpg==0.29.0
+sqlmodel==0.0.24  # Modern ORM combining SQLAlchemy and Pydantic
+pgvector==0.4.1  # pgvector support for Python
+asyncpg==0.30.0   # PostgreSQL driver for async operations
+psycopg2-binary==2.9.10  # PostgreSQL driver for Python
 
 # AI/ML
-langchain
-langchain-openai
-langchain-community
-openai
-numpy==1.26.3
+openai==1.79.0    # OpenAI API
+langchain==0.3.25  # LangChain framework
+langchain-core==0.3.60  # LangChain core abstractions
+langchain-openai==0.3.17  # LangChain OpenAI integration
+langchain-community==0.3.24  # LangChain community integrations
 
-# CORS and middleware
-starlette
+# Security
+python-jose==3.4.0  # JWT authentication
+bcrypt==4.3.0   # Password hashing
+
+# FastAPI add-ons
+fastapi-users==14.0.1  # User management
+pydantic==2.11.3  # Data validation
+python-multipart==0.0.20  # Form data parsing
+
+# Utilities
+python-dotenv==1.1.0  # Environment variable management
+httpx==0.28.1  # HTTP client
+psutil

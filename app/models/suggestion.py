@@ -1,23 +1,26 @@
-# File: app/models/suggestion.py (updated)
-# Path: fanfix-api/app/models/suggestion.py
-
-from typing import List, Dict, Optional, Any
+from datetime import datetime
+from typing import Any, List, Optional, Dict
 from pydantic import BaseModel, Field
-import uuid
 
-class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
-
+# Request model for getting AI suggestions
 class SuggestionRequest(BaseModel):
-    message: str
-    chat_history: List[ChatMessage] = []
-    regenerate: bool = False
-    creator_id: Optional[uuid.UUID] = None  # Optional override for selected creator
-
-class SuggestionMessage(BaseModel):
-    type: str  # "single" or "multi"
-    messages: List[str]
-
+    creator_id: int
+    fan_message: str
+    model: Optional[str] = None
+    suggestion_count: Optional[int] = 3
+    use_similar_conversations: bool = True
+    similarity_threshold: Optional[float] = 0.7
+    
+# Single message suggestion
+class MessageSuggestion(BaseModel):
+    text: str
+    confidence: float = 1.0
+    
+# Response with multiple suggestion options
 class SuggestionResponse(BaseModel):
-    suggestions: List[SuggestionMessage]
+    creator_id: int
+    fan_message: str
+    suggestions: List[MessageSuggestion]
+    model_used: str
+    processing_time: float
+    similar_conversation_count: int = 0

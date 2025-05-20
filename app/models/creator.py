@@ -1,78 +1,65 @@
-# File: app/models/creator.py (updated)
-# Path: fanfix-api/app/models/creator.py
-
 from datetime import datetime
-from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field
-import uuid
+from typing import Any, List, Optional, Dict
+from sqlmodel import Field, Relationship, SQLModel
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Column, text, JSON, String
+from pydantic import validator
 
-# Creator Models
-class CreatorBase(BaseModel):
+from app.models.core import BaseModel
+
+# Creator model
+class Creator(BaseModel, table=True):
+    __tablename__ = "creators"
+    
     name: str
     description: Optional[str] = None
     avatar_url: Optional[str] = None
-    active: bool = True
+    is_active: bool = True
+    
+    # Relationships
+    styles: List["CreatorStyle"] = Relationship(back_populates="creator")
+    examples: List["StyleExample"] = Relationship(back_populates="creator")
 
-class CreatorCreate(CreatorBase):
-    pass
-
-class CreatorUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    avatar_url: Optional[str] = None
-    active: Optional[bool] = None
-
-class CreatorRead(CreatorBase):
-    id: uuid.UUID
-    created_at: datetime
-    style: Optional['CreatorStyleRead'] = None
-    examples: Optional[List['StyleExampleRead']] = None
-
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
-
-# Creator Style Models
-class CreatorStyleBase(BaseModel):
-    approved_emojis: List[str] = Field(default_factory=list)
-    case_style: Optional[str] = None
-    text_replacements: Optional[Dict[str, str]] = None
-    sentence_separators: List[str] = Field(default_factory=list)
-    punctuation_rules: Optional[Dict[str, bool]] = None
-    abbreviations: Optional[Dict[str, str]] = None
-    message_length_preference: Optional[str] = None
+# Creator style configuration
+class CreatorStyle(BaseModel, table=True):
+    __tablename__ = "creator_styles"
+    
+    creator_id: Optional[int] = Field(default=None, foreign_key="creators.id")
+    
+    # Style configuration
+    approved_emojis: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    case_style: Optional[str] = None  # lowercase, sentence, custom
+    text_replacements: Optional[Dict[str, str]] = Field(default=None, sa_column=Column(JSON))
+    sentence_separators: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    punctuation_rules: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    common_abbreviations: Optional[Dict[str, str]] = Field(default=None, sa_column=Column(JSON))
+    message_length_preferences: Optional[Dict[str, int]] = Field(default=None, sa_column=Column(JSON))
     style_instructions: Optional[str] = None
-    tone_range: Optional[str] = None
+    tone_range: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    
+    # Relationships
+    creator: Optional[Creator] = Relationship(back_populates="styles")
 
-class CreatorStyleCreate(CreatorStyleBase):
-    pass
-
-class CreatorStyleUpdate(CreatorStyleBase):
-    pass
-
-class CreatorStyleRead(CreatorStyleBase):
-    creator_id: uuid.UUID
-
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
-
-# Style Example Models
-class StyleExampleBase(BaseModel):
+# Style examples for reference
+class StyleExample(BaseModel, table=True):
+    __tablename__ = "style_examples"
+    
+    creator_id: Optional[int] = Field(default=None, foreign_key="creators.id")
     fan_message: str
-    creator_responses: List[str]
+    creator_response: str
+    category: Optional[str] = None
+    
+    # Relationships
+    creator: Optional[Creator] = Relationship(back_populates="examples")
 
-class StyleExampleCreate(StyleExampleBase):
-    pass
-
-class StyleExampleRead(StyleExampleBase):
-    id: uuid.UUID
-    creator_id: uuid.UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
-
-# Circular reference resolution
-CreatorRead.update_forward_refs()
+# Vector store for conversation examples
+class VectorStore(BaseModel, table=True):
+    __tablename__ = "vector_store"
+    
+    creator_id: Optional[int] = Field(default=None, foreign_key="creators.id")
+    fan_message: str
+    creator_response: str
+    
+    # Vector embedding (1536 dimensions for OpenAI embedding)
+    embedding: Any = Field(sa_column=Column(Vector(1536)))
+    similarity_score: Optional[float] = None

@@ -1,122 +1,145 @@
-# File: app/api/suggestions.py (updated)
-# Path: fanfix-api/app/api/suggestions.py
+import time
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import Session, select
+import openai
 
-from typing import Any, Dict, List
-from fastapi import APIRouter, Depends, HTTPException, status, Response
-import uuid
-
-from prisma import Prisma
-from app.auth.models import User
-from app.auth.users import current_active_user, get_prisma
-from app.api.dependencies import require_api_key
-from app.models.suggestion import (
-    SuggestionRequest,
-    SuggestionResponse,
-    SuggestionMessage,
-    ChatMessage
-)
+from app.models.suggestion import SuggestionRequest, SuggestionResponse
+from app.models.creator import Creator, CreatorStyle, StyleExample, VectorStore
+from app.models.user import User, UserPreference
+from app.core.database import get_session
+from app.auth.users import get_current_active_user
 from app.services.ai_service import AIService
 from app.services.vector_service import VectorService
 
-router = APIRouter(prefix="/suggestions", tags=["suggestions"])
+router = APIRouter()
 
 @router.post("/", response_model=SuggestionResponse)
 async def get_suggestions(
     request: SuggestionRequest,
-    user_prefs = Depends(require_api_key),  # This dependency checks for API key
-    current_user: User = Depends(current_active_user),
-    prisma: Prisma = Depends(get_prisma)
-) -> Any:
+    current_user: User = Depends(get_current_active_user),
+    session: Session = Depends(get_session)
+):
     """
-    Get message suggestions for a fan message
+    Get AI suggestions for a message based on creator style
     """
+    # Get user preferences
+    prefs_query = select(UserPreference).where(UserPreference.user_id == current_user.id)
+    prefs_result = await session.execute(prefs_query)
+    preferences = prefs_result.scalar_one_or_none()
+    
+    # Get OpenAI API key from preferences or settings
+    api_key = preferences.openai_api_key if preferences and preferences.openai_api_key else None
+    
+    # Get creator
+    creator_query = select(Creator).where(Creator.id == request.creator_id)
+    creator_result = await session.execute(creator_query)
+    creator = creator_result.scalar_one_or_none()
+    
+    if not creator:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Creator with ID {request.creator_id} not found"
+        )
+    
+    # Get creator style
+    style_query = select(CreatorStyle).where(CreatorStyle.creator_id == request.creator_id)
+    style_result = await session.execute(style_query)
+    style = style_result.scalar_one_or_none()
+    
+    # Get style examples
+    examples_query = select(StyleExample).where(StyleExample.creator_id == request.creator_id).limit(5)
+    examples_result = await session.execute(examples_query)
+    examples = examples_result.scalars().all()
+    
     # Initialize services
-    ai_service = AIService(
-        api_key=user_prefs.openaiApiKey,
-        model_name=user_prefs.modelName or "gpt-3.5-turbo"
-    )
-    vector_service = VectorService()
+    ai_service = AIService(api_key=api_key)
+    vector_service = VectorService(session=session)
     
-    # Get creator style if available
-    creator_style = None
-    creator_id = user_prefs.selectedCreatorId
-    if creator_id:
-        creator = await prisma.creator.find_unique(
-            where={"id": creator_id},
-            include={"style": True}
-        )
-        if creator and creator.style:
-            creator_style = creator.style
+    # Set model and suggestion count from request or preferences
+    model = request.model or (preferences.default_model if preferences else "gpt-4")
+    suggestion_count = request.suggestion_count or (preferences.suggestion_count if preferences else 3)
     
-    # Get embedding for the fan message
-    embedding = await ai_service.get_embedding(request.message)
-    
-    # Find similar conversations
     similar_conversations = []
-    if creator_id:
-        similar_conversations = await vector_service.find_similar_conversations(
-            embedding=embedding,
-            creator_id=creator_id,
-            limit=3
+    
+    try:
+        # Generate embedding for fan message (if using vector search)
+        if request.use_similar_conversations:
+            # Create embedding using OpenAI
+            response = await ai_service.client.embeddings.create(
+                model="text-embedding-ada-002",
+                input=request.fan_message
+            )
+            embedding = response.data[0].embedding
+            
+            # Find similar conversations
+            similar_conversations = await vector_service.find_similar_conversations(
+                creator_id=request.creator_id,
+                embedding=embedding,
+                similarity_threshold=request.similarity_threshold or 0.7,
+                limit=5
+            )
+        
+        # Generate suggestions
+        suggestions, model_used, processing_time = await ai_service.generate_suggestions(
+            request=request,
+            creator=creator,
+            style=style,
+            examples=examples,
+            similar_conversations=similar_conversations
         )
-    
-    # Get suggestions
-    formatted_chat_history = [
-        {"role": msg.role, "content": msg.content} 
-        for msg in request.chat_history
-    ]
-    
-    suggestions = await ai_service.get_suggestions(
-        fan_message=request.message,
-        chat_history=formatted_chat_history,
-        creator_style=creator_style,
-        similar_conversations=similar_conversations,
-        num_suggestions=user_prefs.numSuggestions,
-        regenerate=request.regenerate
-    )
-    
-    # Store the conversation for future reference (but only if not regenerating)
-    if creator_id and suggestions and not request.regenerate:
-        first_suggestion = suggestions[0]
-        creator_responses = first_suggestion["messages"]
-        await vector_service.store_conversation(
-            creator_id=creator_id,
-            fan_message=request.message,
-            creator_responses=creator_responses,
-            embedding=embedding
+        
+        # Create response
+        response = SuggestionResponse(
+            creator_id=request.creator_id,
+            fan_message=request.fan_message,
+            suggestions=suggestions,
+            model_used=model_used,
+            processing_time=processing_time,
+            similar_conversation_count=len(similar_conversations)
         )
+        
+        return response
     
-    # Format response
-    return {"suggestions": suggestions}
+    except openai.OpenAIError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OpenAI API error: {str(e)}"
+        )
 
-@router.get("/stats", response_model=Dict[str, Any])
+@router.get("/stats")
 async def get_suggestion_stats(
-    creator_id: uuid.UUID = None,
-    current_user: User = Depends(current_active_user)
-) -> Any:
+    current_user: User = Depends(get_current_active_user),
+    session: Session = Depends(get_session)
+):
     """
     Get statistics about stored conversations
     """
-    vector_service = VectorService()
-    stats = await vector_service.get_conversation_stats(
-        creator_id=str(creator_id) if creator_id else None
-    )
+    vector_service = VectorService(session=session)
+    stats = await vector_service.get_statistics()
     return stats
 
-@router.post("/clear", status_code=status.HTTP_200_OK, response_model=Dict[str, Any])
+@router.post("/clear")
 async def clear_stored_conversations(
-    creator_id: uuid.UUID = None,
-    current_user: User = Depends(current_active_user)
-) -> Any:
+    creator_id: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+    session: Session = Depends(get_session)
+):
     """
-    Clear stored conversations
+    Clear stored conversations, optionally for a specific creator
     """
-    vector_service = VectorService()
-    count = await vector_service.clear_conversations(
-        creator_id=str(creator_id) if creator_id else None
-    )
+    # Only admins can clear conversations
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to clear stored conversations"
+        )
+    
+    vector_service = VectorService(session=session)
+    deleted_count = await vector_service.clear_vectors(creator_id)
+    
     return {
-        "success": True,
-        "cleared_count": count,
-        "message": f"Successfully cleared {count} conversations"
+        "deleted_count": deleted_count,
+        "creator_id": creator_id,
+        "timestamp": time.time()
     }

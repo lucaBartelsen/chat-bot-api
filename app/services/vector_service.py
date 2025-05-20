@@ -1,150 +1,115 @@
-# File: app/services/vector_service.py
-# Path: fanfix-api/app/services/vector_service.py
+import time
+from typing import List, Optional, Tuple
+import numpy as np
+from sqlalchemy import select, func
+from sqlmodel import Session
+from pgvector.sqlalchemy import Vector, cosine_distance
 
-from typing import List, Dict, Any, Optional
-import asyncpg
-import os
-import uuid
-
-from app.core.config import settings
+from app.models.creator import VectorStore, Creator
+from app.core.database import get_session
 
 class VectorService:
-    def __init__(self):
-        self.pool = None
-        self.connection_string = settings.DATABASE_URL
+    """Service for vector storage and similarity search"""
     
-    async def init_pool(self):
-        """Initialize connection pool if not already initialized"""
-        if self.pool is None:
-            self.pool = await asyncpg.create_pool(self.connection_string)
-    
-    async def find_similar_conversations(
-        self, 
-        embedding: List[float], 
-        creator_id: str, 
-        limit: int = 3, 
-        similarity_threshold: float = 0.7
-    ) -> List[Dict[str, Any]]:
-        """Find similar conversations using vector similarity"""
-        await self.init_pool()
-        
-        query = """
-        SELECT id, "fanMessage", "creatorResponses", 
-               1 - (embedding <=> $1) as similarity
-        FROM "VectorStore"
-        WHERE "creatorId" = $2
-          AND (1 - (embedding <=> $1)) > $3
-        ORDER BY similarity DESC
-        LIMIT $4
-        """
-        
-        async with self.pool.acquire() as conn:
-            try:
-                rows = await conn.fetch(query, embedding, creator_id, similarity_threshold, limit)
-                
-                result = []
-                for row in rows:
-                    result.append({
-                        "id": row["id"],
-                        "fanMessage": row["fanMessage"],
-                        "creatorResponses": row["creatorResponses"],
-                        "similarity": row["similarity"]
-                    })
-                
-                return result
-            except Exception as e:
-                print(f"Error finding similar conversations: {e}")
-                # If the query fails, return an empty list
-                return []
+    def __init__(self, session: Session):
+        self.session = session
     
     async def store_conversation(
         self, 
-        creator_id: str, 
+        creator_id: int, 
         fan_message: str, 
-        creator_responses: List[str], 
+        creator_response: str, 
         embedding: List[float]
-    ) -> str:
-        """Store a conversation with its embedding vector"""
-        await self.init_pool()
+    ) -> VectorStore:
+        """Store a conversation with vector embedding"""
         
-        query = """
-        INSERT INTO "VectorStore" ("id", "creatorId", "fanMessage", "creatorResponses", embedding)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id
-        """
+        # Create vector store entry
+        vector_entry = VectorStore(
+            creator_id=creator_id,
+            fan_message=fan_message,
+            creator_response=creator_response,
+            embedding=embedding
+        )
         
-        conversation_id = str(uuid.uuid4())
+        # Add to database
+        self.session.add(vector_entry)
+        await self.session.commit()
+        await self.session.refresh(vector_entry)
         
-        async with self.pool.acquire() as conn:
-            try:
-                row = await conn.fetchrow(
-                    query, 
-                    conversation_id,
-                    creator_id, 
-                    fan_message, 
-                    creator_responses, 
-                    embedding
-                )
-                return row["id"]
-            except Exception as e:
-                print(f"Error storing conversation: {e}")
-                # Return a generated ID even if storage fails
-                return conversation_id
+        return vector_entry
     
-    async def get_conversation_stats(self, creator_id: Optional[str] = None) -> Dict[str, Any]:
+    async def find_similar_conversations(
+        self, 
+        creator_id: int, 
+        embedding: List[float], 
+        similarity_threshold: float = 0.7, 
+        limit: int = 5
+    ) -> List[Tuple[VectorStore, float]]:
+        """Find similar conversations based on vector similarity"""
+        
+        # Query for similar conversations
+        query = (
+            select(VectorStore)
+            .where(VectorStore.creator_id == creator_id)
+            .order_by(cosine_distance(VectorStore.embedding, embedding))
+            .limit(limit)
+        )
+        
+        result = await self.session.execute(query)
+        conversations = result.scalars().all()
+        
+        # Calculate similarity scores (1 - cosine distance)
+        similar_conversations = []
+        for conv in conversations:
+            # Calculate cosine similarity (1 - cosine distance)
+            similarity = 1 - cosine_distance(np.array(conv.embedding), np.array(embedding))
+            
+            # Only include if above threshold
+            if similarity >= similarity_threshold:
+                similar_conversations.append((conv, float(similarity)))
+        
+        return similar_conversations
+    
+    async def get_statistics(self) -> dict:
         """Get statistics about stored conversations"""
-        await self.init_pool()
         
-        try:
-            if creator_id:
-                query = """
-                SELECT 
-                    COUNT(*) as total_count,
-                    MAX(timestamp) as latest_timestamp
-                FROM "VectorStore"
-                WHERE "creatorId" = $1
-                """
-                async with self.pool.acquire() as conn:
-                    row = await conn.fetchrow(query, creator_id)
-            else:
-                query = """
-                SELECT 
-                    COUNT(*) as total_count,
-                    MAX(timestamp) as latest_timestamp
-                FROM "VectorStore"
-                """
-                async with self.pool.acquire() as conn:
-                    row = await conn.fetchrow(query)
-                    
-            return {
-                "total_conversations": row["total_count"] if row["total_count"] else 0,
-                "latest_timestamp": row["latest_timestamp"]
-            }
-        except Exception as e:
-            print(f"Error getting conversation stats: {e}")
-            return {
-                "total_conversations": 0,
-                "latest_timestamp": None
-            }
+        # Count total vectors
+        total_query = select(func.count(VectorStore.id))
+        total_result = await self.session.execute(total_query)
+        total_count = total_result.scalar()
+        
+        # Count vectors by creator
+        creator_query = (
+            select(Creator.name, func.count(VectorStore.id))
+            .join(VectorStore, Creator.id == VectorStore.creator_id)
+            .group_by(Creator.name)
+        )
+        creator_result = await self.session.execute(creator_query)
+        creator_counts = {name: count for name, count in creator_result.all()}
+        
+        return {
+            "total_vectors": total_count,
+            "creators": creator_counts,
+            "timestamp": time.time()
+        }
     
-    async def clear_conversations(self, creator_id: Optional[str] = None) -> int:
-        """Clear stored conversations, optionally by creator ID"""
-        await self.init_pool()
+    async def clear_vectors(self, creator_id: Optional[int] = None) -> int:
+        """Clear stored vectors, optionally for a specific creator"""
         
-        try:
-            if creator_id:
-                query = 'DELETE FROM "VectorStore" WHERE "creatorId" = $1'
-                async with self.pool.acquire() as conn:
-                    result = await conn.execute(query, creator_id)
-            else:
-                query = 'DELETE FROM "VectorStore"'
-                async with self.pool.acquire() as conn:
-                    result = await conn.execute(query)
-                    
-            # Parse the DELETE count from the result string
-            # Example format: "DELETE 42"
-            count = int(result.split()[1]) if "DELETE" in result else 0
-            return count
-        except Exception as e:
-            print(f"Error clearing conversations: {e}")
-            return 0
+        if creator_id:
+            # Delete vectors for specific creator
+            query = select(VectorStore).where(VectorStore.creator_id == creator_id)
+        else:
+            # Delete all vectors
+            query = select(VectorStore)
+        
+        result = await self.session.execute(query)
+        vectors = result.scalars().all()
+        
+        deleted_count = len(vectors)
+        for vector in vectors:
+            await self.session.delete(vector)
+        
+        await self.session.commit()
+        
+        return deleted_count
