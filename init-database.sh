@@ -10,6 +10,11 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}Initializing database...${NC}"
 
+# Make sure Prisma cache permissions are correct
+echo -e "${YELLOW}Ensuring Prisma cache permissions...${NC}"
+mkdir -p /app/.cache/prisma-python
+chmod -R 777 /app/.cache/prisma-python
+
 # Wait for database to be ready
 echo -e "${YELLOW}Waiting for database to be ready...${NC}"
 until PGPASSWORD=$POSTGRES_PASSWORD psql -h db -U postgres -d chat_assistant_db -c '\q'; do
@@ -22,6 +27,10 @@ echo -e "${GREEN}Database is ready!${NC}"
 # Enable pgvector extension
 echo -e "${YELLOW}Enabling pgvector extension...${NC}"
 PGPASSWORD=$POSTGRES_PASSWORD psql -h db -U postgres -d chat_assistant_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+# Generate Prisma client (again to ensure it's up to date)
+echo -e "${YELLOW}Generating Prisma client...${NC}"
+prisma generate
 
 # Create vector index if needed (after Prisma has created the tables)
 echo -e "${YELLOW}Setting up vector indexes (will be retried by the application if tables don't exist yet)...${NC}"

@@ -1,7 +1,8 @@
-# File: main.py (with lifespan)
+# File: main.py (updated)
 # Path: fanfix-api/main.py
 
 import os
+import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,20 +21,32 @@ prisma = Prisma()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Connect to database on startup
-    await prisma.connect()
-    
-    # Initialize database if tables don't exist
     try:
-        from app.core.database import init_db_pool
-        db_pool = await init_db_pool()
-        await db_pool.close()
-        print("Database initialized successfully")
+        print("Connecting to database...")
+        await prisma.connect()
+        print("Database connection established successfully")
+        
+        # Initialize database if tables don't exist
+        try:
+            from app.core.database import init_db_pool
+            db_pool = await init_db_pool()
+            await db_pool.close()
+            print("Database initialized successfully")
+        except Exception as e:
+            print(f"Error initializing database: {e}")
     except Exception as e:
-        print(f"Error initializing database: {e}")
+        print(f"Failed to connect to database: {e}")
+        # Don't exit here, continue to allow the app to start
+        # This helps when deploying to environments where the DB might be temporarily unavailable
     
     yield
+    
     # Disconnect from database on shutdown
-    await prisma.disconnect()
+    try:
+        await prisma.disconnect()
+        print("Database connection closed successfully")
+    except Exception as e:
+        print(f"Error disconnecting from database: {e}")
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
