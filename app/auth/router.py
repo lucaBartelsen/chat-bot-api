@@ -14,8 +14,6 @@ from app.auth.users import (
 )
 from app.auth.models import (
     User,
-    UserCreate,
-    UserUpdate,
     UserPreferencesRead,
     UserPreferencesUpdate
 )
@@ -23,9 +21,7 @@ from app.auth.models import (
 # Create the auth router
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Include FastAPI Users routers with proper model parameters
-# For fastapi-users 12.1.2, all router methods need proper arguments
-
+# Include FastAPI Users routers
 router.include_router(
     fastapi_users.get_auth_router(auth_backend),
     prefix="/jwt",
@@ -34,20 +30,25 @@ router.include_router(
 # Import user schemas for router registration
 from app.auth.models import User, UserCreate, UserUpdate
 
+# Explicitly set documentation paths
 router.include_router(
     fastapi_users.get_register_router(User, UserCreate),
+    prefix="",
 )
 
 router.include_router(
     fastapi_users.get_reset_password_router(),
+    prefix="",
 )
 
 router.include_router(
     fastapi_users.get_verify_router(User),
+    prefix="",
 )
 
 router.include_router(
     fastapi_users.get_users_router(User, UserUpdate),
+    prefix="",
 )
 
 # Custom user routes
@@ -67,9 +68,18 @@ async def get_preferences(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Preferences not found"
         )
+    
+    # Handle potential None values
+    selected_creator_id = None
+    if preferences.selectedCreatorId:
+        try:
+            selected_creator_id = uuid.UUID(preferences.selectedCreatorId)
+        except (ValueError, TypeError):
+            selected_creator_id = None
+    
     return UserPreferencesRead(
         user_id=current_user.id,
-        selected_creator_id=uuid.UUID(preferences.selectedCreatorId) if preferences.selectedCreatorId else None,
+        selected_creator_id=selected_creator_id,
         openai_api_key=preferences.openaiApiKey,
         model_name=preferences.modelName,
         num_suggestions=preferences.numSuggestions
@@ -116,15 +126,23 @@ async def update_preferences(
             data=update_data
         )
     
+    # Handle potential None values
+    selected_creator_id = None
+    if preferences.selectedCreatorId:
+        try:
+            selected_creator_id = uuid.UUID(preferences.selectedCreatorId)
+        except (ValueError, TypeError):
+            selected_creator_id = None
+    
     return UserPreferencesRead(
         user_id=current_user.id,
-        selected_creator_id=uuid.UUID(preferences.selectedCreatorId) if preferences.selectedCreatorId else None,
+        selected_creator_id=selected_creator_id,
         openai_api_key=preferences.openaiApiKey,
         model_name=preferences.modelName,
         num_suggestions=preferences.numSuggestions
     )
 
-@router.post("/me/update-last-login")
+@router.post("/me/update-last-login", status_code=status.HTTP_200_OK)
 async def update_last_login(
     current_user: User = Depends(current_active_user),
     prisma: Prisma = Depends(get_prisma)
