@@ -14,13 +14,21 @@ from app.auth.users import get_current_active_user
 
 router = APIRouter()
 
-@router.post("/login")
+@router.post("/login", summary="OAuth2 compatible token login")
 async def login_access_token(
     session: Session = Depends(get_session),
     form_data: OAuth2PasswordRequestForm = Depends()
 ) -> dict:
     """
-    OAuth2 compatible token login, get an access token for future requests
+    OAuth2 compatible token login, get an access token for future requests.
+    
+    This endpoint follows the OAuth2 password flow standard.
+    
+    - **username**: Email address of the user (required)
+    - **password**: Password of the user (required)
+    - **client_id**: Not required, can be left empty
+    - **client_secret**: Not required, can be left empty
+    - **scope**: Not required, can be left empty
     """
     # Find user by email
     query = select(User).where(User.email == form_data.username)

@@ -1,6 +1,8 @@
 import time
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from sqlmodel import Session
 
 from app.core.database import init_db, get_session
@@ -15,6 +17,12 @@ app = FastAPI(
     description="API for storing creator writing styles and generating AI-powered chat suggestions",
     version="0.1.0",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect",
+    swagger_ui_init_oauth={
+        "usePkceWithAuthorizationCodeGrant": False,
+        "clientId": "",
+        "clientSecret": "",
+    }
 )
 
 # Add CORS middleware

@@ -9,7 +9,14 @@ from app.models.user import User
 from app.core.database import get_session
 from app.core.config import settings
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+# Update OAuth2 scheme with more explicit parameters for Swagger UI
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/auth/login",
+    # Added these parameters to make Swagger UI work better
+    scheme_name="OAuth2PasswordBearer",
+    description="OAuth2 password flow",
+    auto_error=True
+)
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
