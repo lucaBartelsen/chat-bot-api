@@ -2,8 +2,8 @@
 # Path: fanfix-api/app/core/config.py
 
 import os
-from typing import List
-from pydantic_settings import BaseSettings
+from typing import List, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ChatAssist API"
@@ -16,9 +16,8 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/chat_assistant_db")
     
-    # CORS
-    # Let Pydantic handle the parsing directly
-    CORS_ORIGINS: List[str] = []
+    # CORS - Default value directly, not from env
+    CORS_ORIGINS: Optional[List[str]] = None
     
     # Domain
     DOMAIN: str = os.getenv("DOMAIN", "chatsassistant.com")
@@ -31,14 +30,15 @@ class Settings(BaseSettings):
     RATE_LIMIT_MAX: int = int(os.getenv("RATE_LIMIT_MAX", "100"))
     RATE_LIMIT_WINDOW_MINUTES: int = int(os.getenv("RATE_LIMIT_WINDOW_MINUTES", "15"))
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Process CORS_ORIGINS from environment variable after initialization
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+    
+    def model_post_init(self, __context):
+        # Process CORS_ORIGINS from environment variable after Pydantic initialization
         cors_origins_str = os.getenv("CORS_ORIGINS", "https://chatsassistant.com,https://*.chatsassistant.com")
-        self.CORS_ORIGINS = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+        if cors_origins_str:
+            self.CORS_ORIGINS = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+        else:
+            self.CORS_ORIGINS = []
 
+# Initialize settings
 settings = Settings()
