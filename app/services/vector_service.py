@@ -1,9 +1,10 @@
 import time
 from typing import List, Optional, Tuple
 import numpy as np
+from requests import session
 from sqlalchemy import select, func
 from sqlmodel import Session
-from pgvector.sqlalchemy import Vector, cosine_distance
+from pgvector.sqlalchemy import Vector
 
 from app.models.creator import VectorStore, Creator
 from app.core.database import get_session
@@ -47,11 +48,12 @@ class VectorService:
     ) -> List[Tuple[VectorStore, float]]:
         """Find similar conversations based on vector similarity"""
         
-        # Query for similar conversations
+        # Query for similar conversations using cosine distance
+        # Using the l2_distance function and order_by syntax for newer pgvector versions
         query = (
             select(VectorStore)
             .where(VectorStore.creator_id == creator_id)
-            .order_by(cosine_distance(VectorStore.embedding, embedding))
+            .order_by(VectorStore.embedding.cosine_distance(embedding))
             .limit(limit)
         )
         
@@ -61,8 +63,16 @@ class VectorService:
         # Calculate similarity scores (1 - cosine distance)
         similar_conversations = []
         for conv in conversations:
-            # Calculate cosine similarity (1 - cosine distance)
-            similarity = 1 - cosine_distance(np.array(conv.embedding), np.array(embedding))
+            # Calculate cosine similarity using numpy
+            v1 = np.array(conv.embedding)
+            v2 = np.array(embedding)
+            
+            # Normalize the vectors
+            v1_norm = v1 / np.linalg.norm(v1)
+            v2_norm = v2 / np.linalg.norm(v2)
+            
+            # Calculate cosine similarity
+            similarity = np.dot(v1_norm, v2_norm)
             
             # Only include if above threshold
             if similarity >= similarity_threshold:
@@ -110,6 +120,6 @@ class VectorService:
         for vector in vectors:
             await self.session.delete(vector)
         
-        await self.session.commit()
+        await session.commit()
         
         return deleted_count
