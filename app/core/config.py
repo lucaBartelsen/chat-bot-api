@@ -5,6 +5,10 @@ import os
 from typing import List
 from pydantic_settings import BaseSettings
 
+def get_cors_origins() -> List[str]:
+    cors_origins_str = os.getenv("CORS_ORIGINS", "https://chatsassistant.com,https://*.chatsassistant.com")
+    return [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ChatAssist API"
     API_V1_STR: str = "/api"
@@ -17,7 +21,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/chat_assistant_db")
     
     # CORS
-    CORS_ORIGINS: List[str] = os.getenv("CORS_ORIGINS", "https://chatsassistant.com,https://*.chatsassistant.com").split(",")
+    CORS_ORIGINS: List[str] = get_cors_origins()
     
     # Domain
     DOMAIN: str = os.getenv("DOMAIN", "chatsassistant.com")

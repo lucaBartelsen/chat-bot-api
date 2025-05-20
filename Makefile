@@ -19,7 +19,7 @@ NC := \033[0m  # No Color
 
 # Help command
 help:
-	@echo "${GREEN}FanFix ChatAssist API Makefile Commands:${NC}"
+	@echo "${GREEN}ChatAssist API Makefile Commands:${NC}"
 	@echo ""
 	@echo "${YELLOW}Setup and Building:${NC}"
 	@echo "  ${GREEN}setup${NC}        - Create necessary directories and files"
