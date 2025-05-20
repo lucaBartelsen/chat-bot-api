@@ -1,8 +1,9 @@
 import os
+import json
 from typing import List, Optional
 
-from pydantic_settings import BaseSettings
-from pydantic import field_validator  # Updated from validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 
 class Settings(BaseSettings):
     # API settings
@@ -31,9 +32,30 @@ class Settings(BaseSettings):
     SUGGESTION_COUNT: int = 3
     
     # Pydantic v2 configuration
-    model_config = {
-        "env_file": ".env",
-        "case_sensitive": True,
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+        json_schema_extra={
+            "examples": {
+                "CORS_ORIGINS": ["http://localhost:3000", "https://chatassistant.com"]
+            }
+        }
+    )
+    
+    # Custom validator for CORS_ORIGINS to handle JSON array strings
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            try:
+                # Only accept JSON array format
+                return json.loads(v)
+            except json.JSONDecodeError:
+                raise ValueError(
+                    "CORS_ORIGINS must be a valid JSON array string, e.g., "
+                    '["http://localhost:3000", "https://chatassistant.com"]'
+                )
+        return v
 
 settings = Settings()
