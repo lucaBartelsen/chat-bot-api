@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from app.core.database import init_db, get_session
 from app.core.config import settings
-from app.api import auth, creators, suggestions
+from app.api import auth, creators, suggestions, examples
 from app.middlewares import add_middlewares
 from app.diagnostics import get_diagnostics_info
 
@@ -15,7 +15,7 @@ from app.diagnostics import get_diagnostics_info
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="API for storing creator writing styles and generating AI-powered chat suggestions",
-    version="0.1.0",
+    version="0.1.1",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect",
     swagger_ui_init_oauth={
@@ -46,6 +46,7 @@ def on_startup():
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
 app.include_router(creators.router, prefix=f"{settings.API_V1_STR}/creators", tags=["Creators"])
 app.include_router(suggestions.router, prefix=f"{settings.API_V1_STR}/suggestions", tags=["Suggestions"])
+app.include_router(examples.router, prefix=f"{settings.API_V1_STR}/creators", tags=["Examples"])
 
 # Health check endpoint
 @app.get("/health", tags=["Diagnostics"])

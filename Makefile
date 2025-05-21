@@ -105,4 +105,4 @@ shell-api:
 
 shell-db:
 	@echo "${GREEN}Opening shell in database container...${NC}"
-	$(DOCKER_COMPOSE) exec db psql -U postgres -d fanfix
+	$(DOCKER_COMPOSE) exec db psql -U postgres -d chatsassistant-db

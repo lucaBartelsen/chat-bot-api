@@ -2,12 +2,12 @@ from datetime import datetime
 from typing import Any, List, Optional, Dict
 from sqlmodel import Field, Relationship, SQLModel
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, text, JSON, String
-from pydantic import field_validator  # Updated from validator
+from sqlalchemy import Column, text, JSON, String, Integer
+from pydantic import field_validator
 
 from app.models.core import BaseModel
 
-# Creator model
+# Creator model (unchanged)
 class Creator(BaseModel, table=True):
     __tablename__ = "creators"
     
@@ -18,9 +18,10 @@ class Creator(BaseModel, table=True):
     
     # Relationships
     styles: List["CreatorStyle"] = Relationship(back_populates="creator")
-    examples: List["StyleExample"] = Relationship(back_populates="creator")
+    style_examples: List["StyleExample"] = Relationship(back_populates="creator")
+    response_examples: List["ResponseExample"] = Relationship(back_populates="creator")
 
-# Creator style configuration
+# Creator style configuration (unchanged)
 class CreatorStyle(BaseModel, table=True):
     __tablename__ = "creator_styles"
     
@@ -40,7 +41,7 @@ class CreatorStyle(BaseModel, table=True):
     # Relationships
     creator: Optional[Creator] = Relationship(back_populates="styles")
 
-# Style examples for reference
+# Style examples for reference (with embedding added)
 class StyleExample(BaseModel, table=True):
     __tablename__ = "style_examples"
     
@@ -49,10 +50,39 @@ class StyleExample(BaseModel, table=True):
     creator_response: str
     category: Optional[str] = None
     
+    # Vector embedding (1536 dimensions for OpenAI embedding)
+    embedding: Optional[Any] = Field(default=None, sa_column=Column(Vector(1536)))
+    
     # Relationships
-    creator: Optional[Creator] = Relationship(back_populates="examples")
+    creator: Optional[Creator] = Relationship(back_populates="style_examples")
 
-# Vector store for conversation examples
+# New model for response examples with multiple responses
+class ResponseExample(BaseModel, table=True):
+    __tablename__ = "response_examples"
+    
+    creator_id: Optional[int] = Field(default=None, foreign_key="creators.id")
+    fan_message: str
+    category: Optional[str] = None
+    
+    # Vector embedding (1536 dimensions for OpenAI embedding)
+    embedding: Optional[Any] = Field(default=None, sa_column=Column(Vector(1536)))
+    
+    # Relationships
+    creator: Optional[Creator] = Relationship(back_populates="response_examples")
+    responses: List["CreatorResponse"] = Relationship(back_populates="example")
+
+# Model for individual creator responses to a response example
+class CreatorResponse(BaseModel, table=True):
+    __tablename__ = "creator_responses"
+    
+    example_id: Optional[int] = Field(default=None, foreign_key="response_examples.id")
+    response_text: str
+    ranking: Optional[int] = Field(default=0)  # Ranking for quality/preference (1-4)
+    
+    # Relationships
+    example: Optional[ResponseExample] = Relationship(back_populates="responses")
+
+# Vector store for conversation examples (unchanged)
 class VectorStore(BaseModel, table=True):
     __tablename__ = "vector_store"
     
