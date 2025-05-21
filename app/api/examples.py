@@ -38,24 +38,18 @@ class StyleExampleResponse(BaseModel):
     fan_message: str
     creator_response: str
     category: Optional[str] = None
-    created_at: Any
-    updated_at: Any
 
 class CreatorResponseResponse(BaseModel):
     id: int
     example_id: int
     response_text: str
     ranking: Optional[int] = None
-    created_at: Any
-    updated_at: Any
 
 class ResponseExampleResponse(BaseModel):
     id: int
     creator_id: int
     fan_message: str
     category: Optional[str] = None
-    created_at: Any
-    updated_at: Any
     responses: List[CreatorResponseResponse]
 
 # Create router
