@@ -1,12 +1,16 @@
 from datetime import datetime, timezone
 from typing import Any, List, Optional, Dict
-from sqlmodel import DateTime, Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 from sqlalchemy import Column, text
-from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
+from pydantic import validator
 
 # Base model for all SQLModel models
 class BaseModel(SQLModel):
+    """Base model with common fields"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc), sa_column=Column(DateTime, default=func.now(), nullable=False))
-    updated_at: datetime = Field(default_factory=datetime.now(timezone.utc),sa_column=Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False))
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc), sa_column_kwargs={"onupdate": None})
+    updated_at: datetime = Field(default_factory=datetime.now(timezone.utc), sa_column_kwargs={"onupdate": datetime.now(timezone.utc)})
+    
+    class Config:
+        arbitrary_types_allowed = True
