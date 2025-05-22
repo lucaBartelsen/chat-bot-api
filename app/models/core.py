@@ -9,8 +9,8 @@ from pydantic import validator
 class BaseModel(SQLModel):
     """Base model with common fields"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc), sa_column_kwargs={"onupdate": None})
-    updated_at: datetime = Field(default_factory=datetime.now(timezone.utc), sa_column_kwargs={"onupdate": datetime.now(timezone.utc)})
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     class Config:
         arbitrary_types_allowed = True
