@@ -1,7 +1,9 @@
+# app/services/ai_service.py - Fixed OpenAI embedding issue
+
 import time
 from typing import List, Optional, Tuple, Dict, Any, Union
 import openai
-from openai import OpenAI
+from openai import AsyncOpenAI  # Use AsyncOpenAI instead of OpenAI
 
 from app.models.creator import (
     Creator, 
@@ -18,10 +20,12 @@ class AIService:
     """Service for AI-powered suggestion generation"""
     
     def __init__(self, api_key: Optional[str] = None):
-        self.client = OpenAI(api_key=api_key)
+        # FIXED: Use AsyncOpenAI for async operations
+        self.client = AsyncOpenAI(api_key=api_key)
     
     async def generate_embedding(self, text: str) -> List[float]:
         """Generate an embedding vector for a text using OpenAI's API"""
+        # FIXED: Remove await since we're using the async client
         response = await self.client.embeddings.create(
             model="text-embedding-ada-002",
             input=text
