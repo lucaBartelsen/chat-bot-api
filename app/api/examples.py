@@ -1,3 +1,5 @@
+# app/api/examples.py - Fixed to use clean response models
+
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlmodel import Session, select
@@ -16,6 +18,34 @@ from app.services.vector_service import VectorService
 from app.services.ai_service import AIService
 from app.api.dependencies import get_ai_service, get_vector_service
 
+# Clean response models (no embeddings to avoid numpy serialization issues)
+class StyleExampleResponse(BaseModel):
+    """Response model for style examples - excludes embedding field"""
+    id: int
+    creator_id: int
+    fan_message: str
+    creator_response: str
+    category: Optional[str] = None
+    created_at: str  # Use string for datetime
+    updated_at: str
+
+class CreatorResponseResponse(BaseModel):
+    """Response model for individual creator responses"""
+    id: int
+    example_id: int
+    response_text: str
+    ranking: Optional[int] = None
+
+class ResponseExampleResponse(BaseModel):
+    """Response model for response examples - excludes embedding field"""
+    id: int
+    creator_id: int
+    fan_message: str
+    category: Optional[str] = None
+    created_at: str  # Use string for datetime
+    updated_at: str
+    responses: List[CreatorResponseResponse] = []
+
 # Request models
 class StyleExampleCreate(BaseModel):
     fan_message: str
@@ -30,27 +60,6 @@ class ResponseExampleCreate(BaseModel):
     fan_message: str
     responses: List[CreatorResponseItem]
     category: Optional[str] = None
-
-# Response models
-class StyleExampleResponse(BaseModel):
-    id: int
-    creator_id: int
-    fan_message: str
-    creator_response: str
-    category: Optional[str] = None
-
-class CreatorResponseResponse(BaseModel):
-    id: int
-    example_id: int
-    response_text: str
-    ranking: Optional[int] = None
-
-class ResponseExampleResponse(BaseModel):
-    id: int
-    creator_id: int
-    fan_message: str
-    category: Optional[str] = None
-    responses: List[CreatorResponseResponse]
 
 # Create router
 router = APIRouter()
@@ -96,7 +105,16 @@ async def create_style_example(
             embedding=embedding
         )
         
-        return stored_example
+        # Return clean response model
+        return StyleExampleResponse(
+            id=stored_example.id,
+            creator_id=stored_example.creator_id,
+            fan_message=stored_example.fan_message,
+            creator_response=stored_example.creator_response,
+            category=stored_example.category,
+            created_at=stored_example.created_at.isoformat(),
+            updated_at=stored_example.updated_at.isoformat()
+        )
     
     except Exception as e:
         raise HTTPException(
@@ -129,7 +147,20 @@ async def get_style_examples(
     result = await session.execute(query)
     examples = result.scalars().all()
     
-    return examples
+    # Convert to clean response models
+    clean_examples = []
+    for example in examples:
+        clean_examples.append(StyleExampleResponse(
+            id=example.id,
+            creator_id=example.creator_id,
+            fan_message=example.fan_message,
+            creator_response=example.creator_response,
+            category=example.category,
+            created_at=example.created_at.isoformat(),
+            updated_at=example.updated_at.isoformat()
+        ))
+    
+    return clean_examples
 
 @router.delete("/{creator_id}/style-examples/{example_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_style_example(
@@ -212,7 +243,7 @@ async def create_response_example(
             embedding=embedding
         )
         
-        # Get complete example with responses
+        # Get complete example with responses for clean response
         query = (
             select(ResponseExample)
             .where(ResponseExample.id == stored_example.id)
@@ -220,7 +251,26 @@ async def create_response_example(
         result = await session.execute(query)
         complete_example = result.scalar_one_or_none()
         
-        return complete_example
+        # Convert to clean response model
+        clean_responses = []
+        if complete_example and complete_example.responses:
+            for resp in complete_example.responses:
+                clean_responses.append(CreatorResponseResponse(
+                    id=resp.id,
+                    example_id=resp.example_id,
+                    response_text=resp.response_text,
+                    ranking=resp.ranking
+                ))
+        
+        return ResponseExampleResponse(
+            id=complete_example.id,
+            creator_id=complete_example.creator_id,
+            fan_message=complete_example.fan_message,
+            category=complete_example.category,
+            created_at=complete_example.created_at.isoformat(),
+            updated_at=complete_example.updated_at.isoformat(),
+            responses=clean_responses
+        )
     
     except Exception as e:
         raise HTTPException(
@@ -253,7 +303,30 @@ async def get_response_examples(
     result = await session.execute(query)
     examples = result.scalars().all()
     
-    return examples
+    # Convert to clean response models
+    clean_examples = []
+    for example in examples:
+        clean_responses = []
+        if example.responses:
+            for resp in example.responses:
+                clean_responses.append(CreatorResponseResponse(
+                    id=resp.id,
+                    example_id=resp.example_id,
+                    response_text=resp.response_text,
+                    ranking=resp.ranking
+                ))
+        
+        clean_examples.append(ResponseExampleResponse(
+            id=example.id,
+            creator_id=example.creator_id,
+            fan_message=example.fan_message,
+            category=example.category,
+            created_at=example.created_at.isoformat(),
+            updated_at=example.updated_at.isoformat(),
+            responses=clean_responses
+        ))
+    
+    return clean_examples
 
 @router.get("/{creator_id}/response-examples/{example_id}", response_model=ResponseExampleResponse)
 async def get_response_example(
@@ -278,7 +351,26 @@ async def get_response_example(
             detail=f"Response example with ID {example_id} not found for creator {creator_id}"
         )
     
-    return example
+    # Convert to clean response model
+    clean_responses = []
+    if example.responses:
+        for resp in example.responses:
+            clean_responses.append(CreatorResponseResponse(
+                id=resp.id,
+                example_id=resp.example_id,
+                response_text=resp.response_text,
+                ranking=resp.ranking
+            ))
+    
+    return ResponseExampleResponse(
+        id=example.id,
+        creator_id=example.creator_id,
+        fan_message=example.fan_message,
+        category=example.category,
+        created_at=example.created_at.isoformat(),
+        updated_at=example.updated_at.isoformat(),
+        responses=clean_responses
+    )
 
 @router.delete("/{creator_id}/response-examples/{example_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_response_example(
@@ -341,8 +433,20 @@ async def find_similar_style_examples(
             category=category
         )
         
-        # Extract examples from tuples
-        return [example for example, _ in similar_examples]
+        # Convert to clean response models
+        clean_examples = []
+        for example, _ in similar_examples:
+            clean_examples.append(StyleExampleResponse(
+                id=example.id,
+                creator_id=example.creator_id,
+                fan_message=example.fan_message,
+                creator_response=example.creator_response,
+                category=example.category,
+                created_at=example.created_at.isoformat(),
+                updated_at=example.updated_at.isoformat()
+            ))
+        
+        return clean_examples
     
     except Exception as e:
         raise HTTPException(
@@ -381,8 +485,30 @@ async def find_similar_response_examples(
             category=category
         )
         
-        # Extract examples from tuples
-        return [example for example, _ in similar_examples]
+        # Convert to clean response models
+        clean_examples = []
+        for example, _ in similar_examples:
+            clean_responses = []
+            if example.responses:
+                for resp in example.responses:
+                    clean_responses.append(CreatorResponseResponse(
+                        id=resp.id,
+                        example_id=resp.example_id,
+                        response_text=resp.response_text,
+                        ranking=resp.ranking
+                    ))
+            
+            clean_examples.append(ResponseExampleResponse(
+                id=example.id,
+                creator_id=example.creator_id,
+                fan_message=example.fan_message,
+                category=example.category,
+                created_at=example.created_at.isoformat(),
+                updated_at=example.updated_at.isoformat(),
+                responses=clean_responses
+            ))
+        
+        return clean_examples
     
     except Exception as e:
         raise HTTPException(

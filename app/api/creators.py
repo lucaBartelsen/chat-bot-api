@@ -1,4 +1,4 @@
-# app/api/creators.py - Basic Creator CRUD + Simple Style Examples
+# app/api/creators.py - Fixed to use clean response models
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -12,9 +12,19 @@ from app.models.user import User
 
 router = APIRouter()
 
-# Response models for pagination
+# Clean response models (no embeddings to avoid numpy serialization issues)
+class StyleExampleResponse(BaseModel):
+    """Response model for style examples - excludes embedding field"""
+    id: int
+    creator_id: int
+    fan_message: str
+    creator_response: str
+    category: Optional[str] = None
+    created_at: str  # Use string for datetime to avoid serialization issues
+    updated_at: str
+
 class StyleExamplesResponse(BaseModel):
-    items: List[StyleExample]
+    items: List[StyleExampleResponse]
     total: int
     page: int
     size: int
@@ -309,7 +319,7 @@ async def delete_creator_style(
     
     return None
 
-# BASIC STYLE EXAMPLES ENDPOINTS (Simple CRUD - No AI/Vector operations)
+# FIXED: Style examples endpoint with clean response model
 @router.get("/{creator_id}/style-examples", response_model=StyleExamplesResponse)
 async def get_style_examples(
     creator_id: int,
@@ -371,23 +381,29 @@ async def get_style_examples(
     pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
     current_page = (skip // limit) + 1
     
+    # FIXED: Convert to clean response models without embeddings
+    clean_examples = []
+    for example in examples:
+        clean_examples.append(StyleExampleResponse(
+            id=example.id,
+            creator_id=example.creator_id,
+            fan_message=example.fan_message,
+            creator_response=example.creator_response,
+            category=example.category,
+            created_at=example.created_at.isoformat(),
+            updated_at=example.updated_at.isoformat()
+        ))
+    
     return StyleExamplesResponse(
-        items=examples,
+        items=clean_examples,
         total=total,
         page=current_page,
         size=limit,
         pages=pages
     )
 
-# NOTE: For advanced style example operations (with AI/vectors), 
-# use the endpoints in app/api/examples.py:
-# - POST /{creator_id}/style-examples (with AI embedding)
-# - Bulk operations
-# - Similarity searches
-# - Vector operations
-
-# Basic CRUD for style examples (No AI features)
-@router.post("/{creator_id}/examples", response_model=StyleExample, status_code=status.HTTP_201_CREATED)
+# Basic CRUD for style examples (No AI features) - Using clean response model
+@router.post("/{creator_id}/examples", response_model=StyleExampleResponse, status_code=status.HTTP_201_CREATED)
 async def add_basic_style_example(
     creator_id: int,
     example: StyleExample,
@@ -420,9 +436,18 @@ async def add_basic_style_example(
     await session.commit()
     await session.refresh(example)
     
-    return example
+    # Return clean response model
+    return StyleExampleResponse(
+        id=example.id,
+        creator_id=example.creator_id,
+        fan_message=example.fan_message,
+        creator_response=example.creator_response,
+        category=example.category,
+        created_at=example.created_at.isoformat(),
+        updated_at=example.updated_at.isoformat()
+    )
 
-@router.get("/{creator_id}/examples", response_model=List[StyleExample])
+@router.get("/{creator_id}/examples", response_model=List[StyleExampleResponse])
 async def get_creator_examples(
     creator_id: int,
     session: Session = Depends(get_session),
@@ -433,4 +458,19 @@ async def get_creator_examples(
     """Get basic style examples for a creator (legacy endpoint)"""
     query = select(StyleExample).where(StyleExample.creator_id == creator_id).offset(skip).limit(limit)
     result = await session.execute(query)
-    return result.scalars().all()
+    examples = result.scalars().all()
+    
+    # Convert to clean response models
+    clean_examples = []
+    for example in examples:
+        clean_examples.append(StyleExampleResponse(
+            id=example.id,
+            creator_id=example.creator_id,
+            fan_message=example.fan_message,
+            creator_response=example.creator_response,
+            category=example.category,
+            created_at=example.created_at.isoformat(),
+            updated_at=example.updated_at.isoformat()
+        ))
+    
+    return clean_examples

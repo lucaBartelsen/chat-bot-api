@@ -1,3 +1,5 @@
+# app/models/creator.py - Fixed to exclude embeddings from API responses
+
 from datetime import datetime
 from typing import Any, List, Optional, Dict
 from sqlmodel import Field, Relationship, SQLModel
@@ -41,7 +43,7 @@ class CreatorStyle(BaseModel, table=True):
     # Relationships
     creator: Optional[Creator] = Relationship(back_populates="styles")
 
-# Style examples for reference (with embedding added)
+# Style examples for reference (with embedding added but excluded from serialization)
 class StyleExample(BaseModel, table=True):
     __tablename__ = "style_examples"
     
@@ -51,10 +53,19 @@ class StyleExample(BaseModel, table=True):
     category: Optional[str] = None
     
     # Vector embedding (1536 dimensions for OpenAI embedding)
-    embedding: Optional[Any] = Field(default=None, sa_column=Column(Vector(1536)))
+    # FIXED: Exclude from serialization to prevent numpy array serialization error
+    embedding: Optional[Any] = Field(
+        default=None, 
+        sa_column=Column(Vector(1536)),
+        exclude=True  # This excludes it from Pydantic serialization
+    )
     
     # Relationships
     creator: Optional[Creator] = Relationship(back_populates="style_examples")
+    
+    class Config:
+        # Alternative way to exclude embedding from serialization
+        fields = {"embedding": {"exclude": True}}
 
 # New model for response examples with multiple responses
 class ResponseExample(BaseModel, table=True):
@@ -65,11 +76,20 @@ class ResponseExample(BaseModel, table=True):
     category: Optional[str] = None
     
     # Vector embedding (1536 dimensions for OpenAI embedding)
-    embedding: Optional[Any] = Field(default=None, sa_column=Column(Vector(1536)))
+    # FIXED: Exclude from serialization to prevent numpy array serialization error
+    embedding: Optional[Any] = Field(
+        default=None, 
+        sa_column=Column(Vector(1536)),
+        exclude=True  # This excludes it from Pydantic serialization
+    )
     
     # Relationships
     creator: Optional[Creator] = Relationship(back_populates="response_examples")
     responses: List["CreatorResponse"] = Relationship(back_populates="example")
+    
+    class Config:
+        # Alternative way to exclude embedding from serialization
+        fields = {"embedding": {"exclude": True}}
 
 # Model for individual creator responses to a response example
 class CreatorResponse(BaseModel, table=True):
@@ -82,7 +102,7 @@ class CreatorResponse(BaseModel, table=True):
     # Relationships
     example: Optional[ResponseExample] = Relationship(back_populates="responses")
 
-# Vector store for conversation examples (unchanged)
+# Vector store for conversation examples (embedding excluded from serialization)
 class VectorStore(BaseModel, table=True):
     __tablename__ = "vector_store"
     
@@ -91,5 +111,13 @@ class VectorStore(BaseModel, table=True):
     creator_response: str
     
     # Vector embedding (1536 dimensions for OpenAI embedding)
-    embedding: Any = Field(sa_column=Column(Vector(1536)))
+    # FIXED: Exclude from serialization to prevent numpy array serialization error
+    embedding: Any = Field(
+        sa_column=Column(Vector(1536)),
+        exclude=True  # This excludes it from Pydantic serialization
+    )
     similarity_score: Optional[float] = None
+    
+    class Config:
+        # Alternative way to exclude embedding from serialization
+        fields = {"embedding": {"exclude": True}}
