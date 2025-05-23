@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     
     # CORS settings
-    CORS_ORIGINS: str = '["http://localhost:3000", "https://chatsassistant.com"]'
+    CORS_ORIGINS: List[str] = '["http://localhost:3000", "https://chatsassistant.com"]'
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
