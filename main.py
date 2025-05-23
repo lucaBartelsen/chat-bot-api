@@ -25,14 +25,20 @@ app = FastAPI(
     }
 )
 
-# Add CORS middleware
+# Add CORS middleware - SEHR PERMISSIV für Development
+# Lass FastAPI alle CORS-Headers handhaben
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],  # Alle Origins erlauben
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"],  # Alle Headers (inkl. Authorization)
+    expose_headers=["*"], # Alle Response-Headers freigeben
 )
+
+# Debug: Print CORS settings
+print(f"🌐 CORS configured to allow all origins")
+print(f"🌐 Original CORS setting from config: {settings.CORS_ORIGINS}")
 
 # Add custom middlewares
 add_middlewares(app)
@@ -55,6 +61,7 @@ async def health_check():
         "status": "ok",
         "timestamp": time.time(),
         "version": app.version,
+        "cors_enabled": "All origins allowed",
     }
 
 # Diagnostics endpoints
