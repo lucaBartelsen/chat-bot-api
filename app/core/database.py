@@ -1,41 +1,82 @@
+# app/core/database.py - Fixed async database configuration
+
 import os
-from typing import Any, AsyncGenerator, List, Optional
-
-from sqlmodel import Field, Relationship, SQLModel, create_engine, Session
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from typing import AsyncGenerator
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Column, text
-from pgvector.sqlalchemy import Vector
+from sqlmodel import SQLModel
 
-# Database URL from environment variable or default
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/fanfix")
-SYNC_DATABASE_URL = os.environ.get("SYNC_DATABASE_URL", "postgresql+psycopg2://postgres:postgres@localhost:5432/fanfix")
+from app.core.config import settings
 
-# Async engine for normal operations
-async_engine = create_async_engine(DATABASE_URL, echo=False, future=True)
-async_session = sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+# Create async engine
+engine = create_async_engine(
+    settings.ASYNC_DATABASE_URL,
+    echo=settings.DATABASE_ECHO,
+    future=True,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 
-# Sync engine for initialization and some operations
-sync_engine = create_engine(SYNC_DATABASE_URL, echo=False, future=True)
+# Create async session factory
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
-# Database session dependency
+# Sync engine for migrations and admin tasks
+sync_engine = create_engine(
+    settings.DATABASE_URL,
+    echo=settings.DATABASE_ECHO,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
+
+# Sync session factory for migrations
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
+
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Get a database session.
-    Returns an async generator that yields a SQLAlchemy AsyncSession.
-    """
-    async with async_session() as session:
+    """Dependency for getting async database session"""
+    async with AsyncSessionLocal() as session:
         try:
             yield session
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
 
-# Function to initialize pgvector extension
-def init_db():
-    with Session(sync_engine) as session:
-        # Create pgvector extension if it doesn't exist
-        session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        session.commit()
-        
-    # Create all tables
-    SQLModel.metadata.create_all(sync_engine)
+
+def get_sync_session():
+    """Get synchronous database session for migrations"""
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+async def create_db_and_tables():
+    """Create database tables"""
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+
+async def drop_db_and_tables():
+    """Drop all database tables"""
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.drop_all)
+
+
+# Database health check
+async def check_database_health() -> bool:
+    """Check if database is accessible"""
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute("SELECT 1")
+            return True
+    except Exception as e:
+        print(f"Database health check failed: {e}")
+        return False

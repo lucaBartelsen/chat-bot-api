@@ -1,21 +1,58 @@
+# main.py - Fixed async database initialization
+
 import time
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
-from sqlmodel import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import init_db, get_session
+from app.core.database import get_session, create_db_and_tables, check_database_health
 from app.core.config import settings
 from app.api import auth, creators, suggestions, examples
 from app.middlewares import add_middlewares
 from app.diagnostics import get_diagnostics_info
 
-# Initialize the FastAPI application - REDIRECT SLASHES DEAKTIVIERT
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown"""
+    # Startup
+    print("🚀 Starting up ChatsAssistant API...")
+    
+    try:
+        # Initialize database tables
+        print("🗄️ Initializing database...")
+        await create_db_and_tables()
+        print("✅ Database tables created/verified")
+        
+        # Check database health
+        health_ok = await check_database_health()
+        if health_ok:
+            print("✅ Database connection healthy")
+        else:
+            print("⚠️ Database connection issues detected")
+            
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        raise
+    
+    print("✅ Application startup complete")
+    
+    yield
+    
+    # Shutdown
+    print("🛑 Shutting down ChatsAssistant API...")
+    print("✅ Application shutdown complete")
+
+
+# Initialize the FastAPI application
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="API for storing creator writing styles and generating AI-powered chat suggestions",
-    version="0.1.1",
+    version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect",
     swagger_ui_init_oauth={
@@ -23,30 +60,26 @@ app = FastAPI(
         "clientId": "",
         "clientSecret": "",
     },
-    redirect_slashes=False  # WICHTIG: Keine automatischen Redirects!
+    redirect_slashes=False,
+    lifespan=lifespan
 )
 
-# Add CORS middleware - SEHR PERMISSIV für Development
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Alle Origins erlauben
+    allow_origins=settings.BACKEND_CORS_ORIGINS + ["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],  # Alle Headers (inkl. Authorization)
-    expose_headers=["*"], # Alle Response-Headers freigeben
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Debug: Print CORS settings
-print(f"🌐 CORS configured to allow all origins")
+print(f"🌐 CORS configured for origins: {settings.BACKEND_CORS_ORIGINS}")
 print(f"🚫 Redirect slashes disabled")
 
 # Add custom middlewares
 add_middlewares(app)
-
-# Initialize database on startup
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
 # Include routers
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
@@ -57,10 +90,15 @@ app.include_router(examples.router, prefix=f"{settings.API_V1_STR}/creators", ta
 # Health check endpoint
 @app.get("/health", tags=["Diagnostics"])
 async def health_check():
+    """Health check endpoint"""
+    db_health = await check_database_health()
+    
     return {
-        "status": "ok",
+        "status": "ok" if db_health else "degraded",
         "timestamp": time.time(),
-        "version": app.version,
+        "version": settings.VERSION,
+        "database": "healthy" if db_health else "unhealthy",
+        "environment": settings.ENVIRONMENT,
         "cors_enabled": "All origins allowed",
         "redirect_slashes": False,
     }
@@ -68,25 +106,75 @@ async def health_check():
 # Diagnostics endpoints
 @app.get("/diagnostics/info", tags=["Diagnostics"])
 async def diagnostics_info():
+    """Get system diagnostics information"""
     return get_diagnostics_info()
+
+# Database diagnostics
+@app.get("/diagnostics/database", tags=["Diagnostics"])
+async def database_diagnostics(session: AsyncSession = Depends(get_session)):
+    """Test database connectivity and operations"""
+    try:
+        # Test basic query
+        result = await session.execute("SELECT 1 as test")
+        test_result = result.scalar()
+        
+        # Test database-specific functions
+        result = await session.execute("SELECT version()")
+        db_version = result.scalar()
+        
+        # Test pgvector extension
+        try:
+            result = await session.execute("SELECT extname FROM pg_extension WHERE extname = 'vector'")
+            vector_installed = result.scalar() is not None
+        except:
+            vector_installed = False
+        
+        return {
+            "status": "healthy",
+            "test_query": test_result,
+            "database_version": db_version,
+            "pgvector_installed": vector_installed,
+            "database_url": settings.DATABASE_URL.split("@")[1] if "@" in settings.DATABASE_URL else "configured",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": time.time()
+        }
 
 # API routes information
 @app.get("/diagnostics/routes", tags=["Diagnostics"])
 async def list_routes():
+    """List all available API routes"""
     routes = []
     for route in app.routes:
-        routes.append({
-            "path": route.path,
-            "name": route.name,
-            "methods": route.methods if hasattr(route, "methods") else [],
-        })
-    return routes
+        route_info = {
+            "path": getattr(route, "path", ""),
+            "name": getattr(route, "name", ""),
+            "methods": list(getattr(route, "methods", [])),
+        }
+        routes.append(route_info)
+    return {
+        "routes": routes,
+        "total_routes": len(routes),
+        "timestamp": time.time()
+    }
 
 # OpenAPI schema
 @app.get("/diagnostics/openapi", tags=["Diagnostics"])
-async def get_openapi():
+async def get_openapi_schema():
+    """Get the OpenAPI schema"""
     return app.openapi()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=True,
+        log_level="info"
+    )
