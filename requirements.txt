@@ -29,3 +29,4 @@ python-multipart==0.0.20  # Form data parsing
 python-dotenv==1.1.0  # Environment variable management
 httpx==0.28.1  # HTTP client
 psutil
+numpy
