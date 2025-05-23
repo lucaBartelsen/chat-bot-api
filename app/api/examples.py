@@ -1,5 +1,3 @@
-# app/api/examples.py - Fixed async OpenAI calls
-
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlmodel import Session, select
@@ -82,8 +80,12 @@ async def create_style_example(
     
     # Generate embedding using OpenAI
     try:
-        # FIXED: Generate embedding for fan message (more relevant for searching)
-        embedding = await ai_service.generate_embedding(example.fan_message)
+        # Generate embedding for fan message (more relevant for searching)
+        embedding_response = await ai_service.client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=example.fan_message
+        )
+        embedding = embedding_response.data[0].embedding
         
         # Store style example with embedding
         stored_example = await vector_service.store_style_example(
@@ -189,8 +191,12 @@ async def create_response_example(
         )
     
     try:
-        # FIXED: Generate embedding using OpenAI
-        embedding = await ai_service.generate_embedding(example.fan_message)
+        # Generate embedding using OpenAI
+        embedding_response = await ai_service.client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=example.fan_message
+        )
+        embedding = embedding_response.data[0].embedding
         
         # Extract response texts and rankings
         response_texts = [resp.response_text for resp in example.responses]
@@ -319,8 +325,12 @@ async def find_similar_style_examples(
     """Find style examples similar to a given fan message"""
     
     try:
-        # FIXED: Generate embedding using OpenAI
-        embedding = await ai_service.generate_embedding(fan_message)
+        # Generate embedding using OpenAI
+        embedding_response = await ai_service.client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=fan_message
+        )
+        embedding = embedding_response.data[0].embedding
         
         # Find similar examples
         similar_examples = await vector_service.find_similar_style_examples(
@@ -355,8 +365,12 @@ async def find_similar_response_examples(
     """Find response examples similar to a given fan message"""
     
     try:
-        # FIXED: Generate embedding using OpenAI
-        embedding = await ai_service.generate_embedding(fan_message)
+        # Generate embedding using OpenAI
+        embedding_response = await ai_service.client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=fan_message
+        )
+        embedding = embedding_response.data[0].embedding
         
         # Find similar examples
         similar_examples = await vector_service.find_similar_response_examples(
@@ -404,8 +418,12 @@ async def bulk_create_style_examples(
     
     for idx, example in enumerate(examples):
         try:
-            # FIXED: Generate embedding
-            embedding = await ai_service.generate_embedding(example.fan_message)
+            # Generate embedding
+            embedding_response = await ai_service.client.embeddings.create(
+                model="text-embedding-ada-002",
+                input=example.fan_message
+            )
+            embedding = embedding_response.data[0].embedding
             
             # Store example
             await vector_service.store_style_example(
@@ -463,8 +481,12 @@ async def bulk_create_response_examples(
             if not example.responses or len(example.responses) == 0:
                 raise ValueError("At least one response is required")
             
-            # FIXED: Generate embedding
-            embedding = await ai_service.generate_embedding(example.fan_message)
+            # Generate embedding
+            embedding_response = await ai_service.client.embeddings.create(
+                model="text-embedding-ada-002",
+                input=example.fan_message
+            )
+            embedding = embedding_response.data[0].embedding
             
             # Extract response texts and rankings
             response_texts = [resp.response_text for resp in example.responses]

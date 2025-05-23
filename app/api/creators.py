@@ -1,8 +1,9 @@
-# app/api/creators.py - Updated with GET style endpoint
+# app/api/creators.py - Basic Creator CRUD + Simple Style Examples
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session, select
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlmodel import Session, select, func
+from pydantic import BaseModel
 
 from app.core.database import get_session
 from app.models.creator import Creator, CreatorStyle, StyleExample
@@ -11,19 +12,53 @@ from app.models.user import User
 
 router = APIRouter()
 
-# EXISTING ENDPOINTS (unchanged)
-@router.get("/", response_model=List[Creator])
-@router.get("", response_model=List[Creator])
+# Response models for pagination
+class StyleExamplesResponse(BaseModel):
+    items: List[StyleExample]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+class CreatorsResponse(BaseModel):
+    items: List[Creator]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+# CREATORS CRUD ENDPOINTS
+@router.get("/", response_model=CreatorsResponse)
+@router.get("", response_model=CreatorsResponse)
 async def list_creators(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
 ):
-    """List all creators"""
-    query = select(Creator).offset(skip).limit(limit)
+    """List all creators with pagination"""
+    
+    # Get total count
+    count_query = select(func.count(Creator.id))
+    count_result = await session.execute(count_query)
+    total = count_result.scalar() or 0
+    
+    # Get paginated results
+    query = select(Creator).offset(skip).limit(limit).order_by(Creator.created_at.desc())
     result = await session.execute(query)
-    return result.scalars().all()
+    creators = result.scalars().all()
+    
+    # Calculate pagination info
+    pages = max(1, (total + limit - 1) // limit)
+    current_page = (skip // limit) + 1
+    
+    return CreatorsResponse(
+        items=creators,
+        total=total,
+        page=current_page,
+        size=limit,
+        pages=pages
+    )
 
 @router.get("/{creator_id}", response_model=Creator)
 async def get_creator(
@@ -87,7 +122,6 @@ async def update_creator(
         )
     
     # Update creator attributes
-    # Updated for Pydantic v2: dict() -> model_dump()
     for key, value in creator_update.model_dump(exclude_unset=True).items():
         setattr(db_creator, key, value)
     
@@ -95,8 +129,34 @@ async def update_creator(
     await session.refresh(db_creator)
     return db_creator
 
-# CREATOR STYLE ENDPOINTS
+@router.delete("/{creator_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_creator(
+    creator_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Delete a creator"""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete creators",
+        )
+    
+    query = select(Creator).where(Creator.id == creator_id)
+    result = await session.execute(query)
+    creator = result.scalar_one_or_none()
+    
+    if not creator:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Creator with ID {creator_id} not found",
+        )
+    
+    await session.delete(creator)
+    await session.commit()
+    return None
 
+# CREATOR STYLE ENDPOINTS
 @router.get("/{creator_id}/style", response_model=CreatorStyle)
 async def get_creator_style(
     creator_id: int,
@@ -249,15 +309,92 @@ async def delete_creator_style(
     
     return None
 
-# EXISTING STYLE EXAMPLES ENDPOINTS (unchanged)
-@router.post("/{creator_id}/examples", response_model=StyleExample)
-async def add_style_example(
+# BASIC STYLE EXAMPLES ENDPOINTS (Simple CRUD - No AI/Vector operations)
+@router.get("/{creator_id}/style-examples", response_model=StyleExamplesResponse)
+async def get_style_examples(
+    creator_id: int,
+    category: Optional[str] = Query(None, description="Filter by category ('all' for no filter)"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(10, ge=1, le=100, description="Number of records to return"),
+    search: Optional[str] = Query(None, description="Search in fan_message and creator_response"),
+    current_user: User = Depends(get_current_active_user),
+    session: Session = Depends(get_session)
+):
+    """Get style examples for a creator with pagination, search, and filtering"""
+    
+    # Check if creator exists
+    creator_query = select(Creator).where(Creator.id == creator_id)
+    creator_result = await session.execute(creator_query)
+    creator = creator_result.scalar_one_or_none()
+    
+    if not creator:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Creator with ID {creator_id} not found"
+        )
+    
+    # Build base query
+    base_query = select(StyleExample).where(StyleExample.creator_id == creator_id)
+    
+    # Add search filter
+    if search and search.strip():
+        search_term = f"%{search.strip()}%"
+        search_filter = (
+            StyleExample.fan_message.ilike(search_term) | 
+            StyleExample.creator_response.ilike(search_term)
+        )
+        base_query = base_query.where(search_filter)
+    
+    # Add category filter
+    if category and category != 'all' and category.strip():
+        base_query = base_query.where(StyleExample.category == category)
+    
+    # Get total count for pagination
+    count_stmt = select(func.count()).select_from(
+        base_query.subquery()
+    )
+    count_result = await session.execute(count_stmt)
+    total = count_result.scalar() or 0
+    
+    # Get paginated results, ordered by creation date (newest first)
+    paginated_query = (
+        base_query
+        .order_by(StyleExample.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    
+    result = await session.execute(paginated_query)
+    examples = result.scalars().all()
+    
+    # Calculate pagination metadata
+    pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
+    current_page = (skip // limit) + 1
+    
+    return StyleExamplesResponse(
+        items=examples,
+        total=total,
+        page=current_page,
+        size=limit,
+        pages=pages
+    )
+
+# NOTE: For advanced style example operations (with AI/vectors), 
+# use the endpoints in app/api/examples.py:
+# - POST /{creator_id}/style-examples (with AI embedding)
+# - Bulk operations
+# - Similarity searches
+# - Vector operations
+
+# Basic CRUD for style examples (No AI features)
+@router.post("/{creator_id}/examples", response_model=StyleExample, status_code=status.HTTP_201_CREATED)
+async def add_basic_style_example(
     creator_id: int,
     example: StyleExample,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Add a style example for a creator"""
+    """Add a basic style example (without AI embedding) - Use /api/creators/{id}/style-examples for AI features"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -278,7 +415,7 @@ async def add_style_example(
     # Set creator_id
     example.creator_id = creator_id
     
-    # Add example to db
+    # Add example to db (no embedding generation)
     session.add(example)
     await session.commit()
     await session.refresh(example)
@@ -293,7 +430,7 @@ async def get_creator_examples(
     skip: int = 0,
     limit: int = 100,
 ):
-    """Get style examples for a creator"""
+    """Get basic style examples for a creator (legacy endpoint)"""
     query = select(StyleExample).where(StyleExample.creator_id == creator_id).offset(skip).limit(limit)
     result = await session.execute(query)
     return result.scalars().all()
