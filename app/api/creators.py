@@ -10,6 +10,7 @@ from app.models.user import User
 router = APIRouter()
 
 @router.get("/", response_model=List[Creator])
+@router.get("", response_model=List[Creator])
 async def list_creators(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),

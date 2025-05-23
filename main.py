@@ -11,7 +11,7 @@ from app.api import auth, creators, suggestions, examples
 from app.middlewares import add_middlewares
 from app.diagnostics import get_diagnostics_info
 
-# Initialize the FastAPI application
+# Initialize the FastAPI application - REDIRECT SLASHES DEAKTIVIERT
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="API for storing creator writing styles and generating AI-powered chat suggestions",
@@ -22,11 +22,11 @@ app = FastAPI(
         "usePkceWithAuthorizationCodeGrant": False,
         "clientId": "",
         "clientSecret": "",
-    }
+    },
+    redirect_slashes=False  # WICHTIG: Keine automatischen Redirects!
 )
 
 # Add CORS middleware - SEHR PERMISSIV für Development
-# Lass FastAPI alle CORS-Headers handhaben
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Alle Origins erlauben
@@ -38,7 +38,7 @@ app.add_middleware(
 
 # Debug: Print CORS settings
 print(f"🌐 CORS configured to allow all origins")
-print(f"🌐 Original CORS setting from config: {settings.CORS_ORIGINS}")
+print(f"🚫 Redirect slashes disabled")
 
 # Add custom middlewares
 add_middlewares(app)
@@ -62,6 +62,7 @@ async def health_check():
         "timestamp": time.time(),
         "version": app.version,
         "cors_enabled": "All origins allowed",
+        "redirect_slashes": False,
     }
 
 # Diagnostics endpoints
