@@ -18,11 +18,13 @@ engine = create_async_engine(
     pool_recycle=300,
 )
 
-# Create async session factory
+# FIXED: Create async session factory with expire_on_commit=False
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False,  # CRITICAL: This prevents the greenlet error
+    autoflush=False,  # Prevent automatic flushing
+    autocommit=False
 )
 
 # Sync engine for migrations and admin tasks

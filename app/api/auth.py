@@ -1,9 +1,12 @@
+# app/api/auth.py - Fixed to use AsyncSession consistently
+
 from datetime import timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import Session, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 from pydantic import ValidationError
 
 from app.models.user import User, UserPreference
@@ -16,7 +19,7 @@ router = APIRouter()
 
 @router.post("/login", summary="OAuth2 compatible token login")
 async def login_access_token(
-    session: Session = Depends(get_session),
+    session: AsyncSession = Depends(get_session),
     form_data: OAuth2PasswordRequestForm = Depends()
 ) -> dict:
     """
@@ -63,7 +66,7 @@ async def login_access_token(
 async def register_user(
     email: str = Body(...),
     password: str = Body(...),
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> User:
     """
     Register a new user
@@ -110,7 +113,7 @@ async def read_users_me(
 @router.get("/preferences", response_model=UserPreference)
 async def get_user_preferences(
     current_user: User = Depends(get_current_active_user),
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> UserPreference:
     """
     Get user preferences
@@ -132,7 +135,7 @@ async def get_user_preferences(
 async def update_user_preferences(
     preferences_update: UserPreference,
     current_user: User = Depends(get_current_active_user),
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> UserPreference:
     """
     Update user preferences

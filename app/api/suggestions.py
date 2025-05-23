@@ -1,7 +1,10 @@
+# app/api/suggestions.py - Fixed to use AsyncSession and store_conversation method
+
 import time
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Body
-from sqlmodel import Session, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 import openai
 
 from app.models.suggestion import SuggestionRequest, SuggestionResponse
@@ -25,7 +28,7 @@ router = APIRouter()
 async def get_suggestions(
     request: SuggestionRequest,
     current_user: User = Depends(get_current_active_user),
-    session: Session = Depends(get_session),
+    session: AsyncSession = Depends(get_session),
     ai_service: AIService = Depends(get_ai_service),
     vector_service: VectorService = Depends(get_vector_service)
 ):
@@ -77,7 +80,7 @@ async def get_suggestions(
             # Store the best suggestion (highest confidence)
             best_suggestion = max(suggestions, key=lambda s: s.confidence)
             
-            # Store in vector database
+            # FIXED: Store in vector database using store_conversation method
             await vector_service.store_conversation(
                 creator_id=request.creator_id,
                 fan_message=request.fan_message,
@@ -154,7 +157,7 @@ async def store_feedback(
         # Generate embedding for fan message
         embedding = await ai_service.generate_embedding(fan_message)
         
-        # Store in vector database
+        # FIXED: Store in vector database using store_conversation method
         vector = await vector_service.store_conversation(
             creator_id=creator_id,
             fan_message=fan_message,

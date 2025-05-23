@@ -1,13 +1,11 @@
-# app/services/vector_service.py - Fixed async/await handling
+# app/services/vector_service.py - Fixed async/await handling with proper conversation storage
 
 from typing import List, Tuple, Optional, Any
 import numpy as np
-from sqlmodel import Session, select, text
+from sqlmodel import select, text, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func
 
 from app.models.creator import StyleExample, ResponseExample, CreatorResponse, VectorStore
-from app.core.database import get_session
 
 
 class VectorService:
@@ -87,6 +85,32 @@ class VectorService:
         return example
 
     async def store_vector_example(
+        self,
+        creator_id: int,
+        fan_message: str,
+        creator_response: str,
+        embedding: List[float]
+    ) -> VectorStore:
+        """Store a conversation example in the vector store"""
+        
+        # Create VectorStore instance
+        vector_item = VectorStore(
+            creator_id=creator_id,
+            fan_message=fan_message,
+            creator_response=creator_response,
+            embedding=embedding  # Store as list, will be converted to numpy array by pgvector
+        )
+        
+        # Add to session
+        self.session.add(vector_item)
+        
+        # Commit and refresh
+        await self.session.commit()
+        await self.session.refresh(vector_item)
+        
+        return vector_item
+
+    async def store_conversation(
         self,
         creator_id: int,
         fan_message: str,
@@ -384,43 +408,56 @@ class VectorService:
         )
         await self.session.commit()
 
-    async def get_statistics(self, creator_id: int) -> dict:
-        """Get statistics about stored examples for a creator"""
+    async def get_statistics(self, creator_id: Optional[int] = None) -> dict:
+        """Get statistics about stored examples for a creator or all creators"""
         
         # Count style examples
-        style_count_query = select(func.count(StyleExample.id)).where(
-            StyleExample.creator_id == creator_id
-        )
+        style_count_query = select(func.count(StyleExample.id))
+        if creator_id:
+            style_count_query = style_count_query.where(StyleExample.creator_id == creator_id)
+        
         style_count_result = await self.session.execute(style_count_query)
         style_count = style_count_result.scalar() or 0
         
         # Count response examples
-        response_count_query = select(func.count(ResponseExample.id)).where(
-            ResponseExample.creator_id == creator_id
-        )
+        response_count_query = select(func.count(ResponseExample.id))
+        if creator_id:
+            response_count_query = response_count_query.where(ResponseExample.creator_id == creator_id)
+        
         response_count_result = await self.session.execute(response_count_query)
         response_count = response_count_result.scalar() or 0
         
         # Count vector store items
-        vector_count_query = select(func.count(VectorStore.id)).where(
-            VectorStore.creator_id == creator_id
-        )
+        vector_count_query = select(func.count(VectorStore.id))
+        if creator_id:
+            vector_count_query = vector_count_query.where(VectorStore.creator_id == creator_id)
+        
         vector_count_result = await self.session.execute(vector_count_query)
         vector_count = vector_count_result.scalar() or 0
         
         # Get categories for style examples
-        style_categories_query = select(StyleExample.category).where(
-            StyleExample.creator_id == creator_id,
-            StyleExample.category.is_not(None)
-        ).distinct()
+        style_categories_query = select(StyleExample.category).distinct()
+        if creator_id:
+            style_categories_query = style_categories_query.where(
+                StyleExample.creator_id == creator_id,
+                StyleExample.category.is_not(None)
+            )
+        else:
+            style_categories_query = style_categories_query.where(StyleExample.category.is_not(None))
+            
         style_categories_result = await self.session.execute(style_categories_query)
         style_categories = [row[0] for row in style_categories_result.all()]
         
         # Get categories for response examples
-        response_categories_query = select(ResponseExample.category).where(
-            ResponseExample.creator_id == creator_id,
-            ResponseExample.category.is_not(None)
-        ).distinct()
+        response_categories_query = select(ResponseExample.category).distinct()
+        if creator_id:
+            response_categories_query = response_categories_query.where(
+                ResponseExample.creator_id == creator_id,
+                ResponseExample.category.is_not(None)
+            )
+        else:
+            response_categories_query = response_categories_query.where(ResponseExample.category.is_not(None))
+            
         response_categories_result = await self.session.execute(response_categories_query)
         response_categories = [row[0] for row in response_categories_result.all()]
         
@@ -434,3 +471,53 @@ class VectorService:
             "response_categories": response_categories,
             "all_categories": list(set(style_categories + response_categories))
         }
+
+    async def clear_vectors(self, creator_id: Optional[int] = None) -> dict:
+        """Clear stored vectors (conversations and examples), optionally for a specific creator"""
+        
+        deleted_counts = {
+            "style_examples": 0,
+            "response_examples": 0,
+            "vector_store": 0
+        }
+        
+        # Delete style examples
+        style_query = select(StyleExample)
+        if creator_id:
+            style_query = style_query.where(StyleExample.creator_id == creator_id)
+        
+        style_result = await self.session.execute(style_query)
+        style_examples = style_result.scalars().all()
+        
+        for example in style_examples:
+            await self.session.delete(example)
+            deleted_counts["style_examples"] += 1
+        
+        # Delete response examples
+        response_query = select(ResponseExample)
+        if creator_id:
+            response_query = response_query.where(ResponseExample.creator_id == creator_id)
+        
+        response_result = await self.session.execute(response_query)
+        response_examples = response_result.scalars().all()
+        
+        for example in response_examples:
+            await self.session.delete(example)
+            deleted_counts["response_examples"] += 1
+        
+        # Delete vector store items
+        vector_query = select(VectorStore)
+        if creator_id:
+            vector_query = vector_query.where(VectorStore.creator_id == creator_id)
+        
+        vector_result = await self.session.execute(vector_query)
+        vector_items = vector_result.scalars().all()
+        
+        for item in vector_items:
+            await self.session.delete(item)
+            deleted_counts["vector_store"] += 1
+        
+        # Commit all deletions
+        await self.session.commit()
+        
+        return deleted_counts
