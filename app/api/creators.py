@@ -1,4 +1,4 @@
-# app/api/creators.py - Complete file with all endpoints
+# app/api/creators.py - Updated to auto-create style config on creator creation
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -38,6 +38,56 @@ class CreatorsResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+def create_default_style_config(creator_id: int) -> CreatorStyle:
+    """Create a default style configuration for a new creator"""
+    return CreatorStyle(
+        creator_id=creator_id,
+        # Basic text styling defaults
+        case_style="sentence",  # Most natural for conversation
+        approved_emojis=["😊", "❤️", "😘", "😉", "👋", "🔥", "💕", "😍", "🥰", "💋"],  # Common friendly emojis
+        sentence_separators=[".", "!", "?"],  # Standard punctuation
+        
+        # Text replacements - common casual conversions
+        text_replacements={
+            "you": "u",
+            "your": "ur", 
+            "because": "bc",
+            "probably": "prob",
+            "definitely": "def"
+        },
+        
+        # Common abbreviations
+        common_abbreviations={
+            "btw": "by the way",
+            "omg": "oh my god", 
+            "lol": "laugh out loud",
+            "tbh": "to be honest",
+            "imo": "in my opinion",
+            "rn": "right now",
+            "ngl": "not gonna lie"
+        },
+        
+        # Message length preferences
+        message_length_preferences={
+            "min_length": 10,
+            "max_length": 500,
+            "optimal_length": 150
+        },
+        
+        # Punctuation rules
+        punctuation_rules={
+            "use_ellipsis": True,
+            "use_exclamations": True, 
+            "max_consecutive_exclamations": 2
+        },
+        
+        # Default style instructions
+        style_instructions="""Write in a friendly, conversational tone. Keep messages engaging and personal. Use casual language that feels natural and authentic. Vary your responses to avoid sounding repetitive.""",
+        
+        # Default tone range
+        tone_range=["friendly", "casual", "enthusiastic", "supportive", "playful"]
+    )
 
 # CREATORS CRUD ENDPOINTS
 @router.get("/", response_model=CreatorsResponse)
@@ -97,16 +147,27 @@ async def create_creator(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Create a new creator"""
+    """Create a new creator with default style configuration"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to create creators",
         )
     
+    # Add creator to database
     session.add(creator)
+    await session.flush()  # Get the creator ID without committing
+    
+    # Create default style configuration
+    default_style = create_default_style_config(creator.id)
+    session.add(default_style)
+    
+    # Commit both creator and style config
     await session.commit()
     await session.refresh(creator)
+    
+    print(f"✅ Created creator '{creator.name}' (ID: {creator.id}) with default style configuration")
+    
     return creator
 
 @router.patch("/{creator_id}", response_model=Creator)
@@ -193,10 +254,13 @@ async def get_creator_style(
     style = style_result.scalar_one_or_none()
     
     if not style:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Style configuration not found for creator {creator_id}",
-        )
+        # This shouldn't happen with the new auto-creation, but let's handle it gracefully
+        # Create default style configuration if missing
+        style = create_default_style_config(creator_id)
+        session.add(style)
+        await session.commit()
+        await session.refresh(style)
+        print(f"⚠️ Created missing style config for creator {creator_id}")
     
     return style
 
@@ -207,7 +271,7 @@ async def store_creator_style(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Store a creator's writing style"""
+    """Store a creator's writing style (use PATCH to update existing)"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -277,10 +341,11 @@ async def update_creator_style(
     existing_style = style_result.scalar_one_or_none()
     
     if not existing_style:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Style configuration not found for creator {creator_id}",
-        )
+        # Create default style if missing (shouldn't happen with auto-creation)
+        existing_style = create_default_style_config(creator_id)
+        session.add(existing_style)
+        await session.flush()
+        print(f"⚠️ Created missing style config during update for creator {creator_id}")
     
     # Update style attributes
     for key, value in style_update.model_dump(exclude_unset=True).items():
@@ -298,7 +363,7 @@ async def delete_creator_style(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Delete a creator's writing style"""
+    """Delete a creator's writing style (will recreate default on next access)"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
