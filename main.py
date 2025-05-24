@@ -1,4 +1,4 @@
-# main.py - Fixed async database initialization
+# main.py - Updated CORS configuration
 
 import time
 import asyncio
@@ -64,18 +64,32 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# CORS origins - allow both local development and production
+cors_origins = ["*"]
+
+# Add CORS middleware with proper configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS + ["*"],  # Allow all origins for development
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,  # Use specific origins instead of "*"
+    allow_credentials=True,  # Important for authentication
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language",
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers",
+    ],
     expose_headers=["*"],
+    max_age=86400,  # 24 hours
 )
 
 # Debug: Print CORS settings
-print(f"🌐 CORS configured for origins: {settings.BACKEND_CORS_ORIGINS}")
+print(f"🌐 CORS configured for origins: {cors_origins}")
 print(f"🚫 Redirect slashes disabled")
 
 # Add custom middlewares
@@ -99,7 +113,7 @@ async def health_check():
         "version": settings.VERSION,
         "database": "healthy" if db_health else "unhealthy",
         "environment": settings.ENVIRONMENT,
-        "cors_enabled": "All origins allowed",
+        "cors_origins": cors_origins,
         "redirect_slashes": False,
     }
 
