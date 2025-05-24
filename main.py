@@ -1,4 +1,4 @@
-# main.py - Updated CORS configuration
+# main.py - Updated with user management router
 
 import time
 import asyncio
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session, create_db_and_tables, check_database_health
 from app.core.config import settings
-from app.api import auth, creators, suggestions, examples
+from app.api import auth, creators, suggestions, examples, users  # Added users import
 from app.middlewares import add_middlewares
 from app.diagnostics import get_diagnostics_info
 
@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
 # Initialize the FastAPI application
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="API for storing creator writing styles and generating AI-powered chat suggestions",
+    description="API for storing creator writing styles and generating AI-powered chat suggestions with comprehensive user management",
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect",
@@ -70,8 +70,8 @@ cors_origins = ["*"]
 # Add CORS middleware with proper configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,  # Use specific origins instead of "*"
-    allow_credentials=True,  # Important for authentication
+    allow_origins=cors_origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Accept",
@@ -95,11 +95,12 @@ print(f"🚫 Redirect slashes disabled")
 # Add custom middlewares
 add_middlewares(app)
 
-# Include routers
+# Include routers - Added users router
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
 app.include_router(creators.router, prefix=f"{settings.API_V1_STR}/creators", tags=["Creators"])
 app.include_router(suggestions.router, prefix=f"{settings.API_V1_STR}/suggestions", tags=["Suggestions"])
 app.include_router(examples.router, prefix=f"{settings.API_V1_STR}/creators", tags=["Examples"])
+app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["User Management"])  # New users router
 
 # Health check endpoint
 @app.get("/health", tags=["Diagnostics"])
@@ -115,6 +116,15 @@ async def health_check():
         "environment": settings.ENVIRONMENT,
         "cors_origins": cors_origins,
         "redirect_slashes": False,
+        "features": [
+            "user_management",
+            "creator_management", 
+            "ai_suggestions",
+            "style_examples",
+            "response_examples",
+            "vector_search",
+            "admin_panel"
+        ]
     }
 
 # Diagnostics endpoints
@@ -143,11 +153,31 @@ async def database_diagnostics(session: AsyncSession = Depends(get_session)):
         except:
             vector_installed = False
         
+        # Test user management tables
+        try:
+            from app.models.user import User, UserPreference
+            user_count_result = await session.execute("SELECT COUNT(*) FROM users")
+            user_count = user_count_result.scalar()
+            
+            pref_count_result = await session.execute("SELECT COUNT(*) FROM user_preferences")
+            pref_count = pref_count_result.scalar()
+            
+            user_tables_status = "healthy"
+        except Exception as e:
+            user_count = 0
+            pref_count = 0
+            user_tables_status = f"error: {str(e)}"
+        
         return {
             "status": "healthy",
             "test_query": test_result,
             "database_version": db_version,
             "pgvector_installed": vector_installed,
+            "user_management": {
+                "status": user_tables_status,
+                "users_count": user_count,
+                "preferences_count": pref_count
+            },
             "database_url": settings.DATABASE_URL.split("@")[1] if "@" in settings.DATABASE_URL else "configured",
             "timestamp": time.time()
         }
@@ -171,8 +201,19 @@ async def list_routes():
             "methods": list(getattr(route, "methods", [])),
         }
         routes.append(route_info)
+    
+    # Group routes by category
+    route_categories = {
+        "authentication": [r for r in routes if "/auth" in r["path"]],
+        "user_management": [r for r in routes if "/users" in r["path"]],
+        "creators": [r for r in routes if "/creators" in r["path"]],
+        "suggestions": [r for r in routes if "/suggestions" in r["path"]],
+        "diagnostics": [r for r in routes if "/diagnostics" in r["path"] or "/health" in r["path"]],
+        "other": [r for r in routes if not any(x in r["path"] for x in ["/auth", "/users", "/creators", "/suggestions", "/diagnostics", "/health"])]
+    }
+    
     return {
-        "routes": routes,
+        "routes_by_category": route_categories,
         "total_routes": len(routes),
         "timestamp": time.time()
     }
