@@ -1,7 +1,8 @@
 # app/api/creators.py - Complete file with all endpoints
 
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, func
 from pydantic import BaseModel
@@ -727,3 +728,198 @@ async def deactivate_creator(
     await session.refresh(creator)
     
     return creator
+
+@router.get("/{creator_id}/stats", response_model=Dict[str, Any])
+async def get_creator_statistics(
+    creator_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get comprehensive statistics for a specific creator"""
+    
+    # Check if creator exists
+    creator_query = select(Creator).where(Creator.id == creator_id)
+    creator_result = await session.execute(creator_query)
+    creator = creator_result.scalar_one_or_none()
+    
+    if not creator:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Creator with ID {creator_id} not found"
+        )
+    
+    # Count style examples
+    style_count_query = select(func.count(StyleExample.id)).where(StyleExample.creator_id == creator_id)
+    style_count_result = await session.execute(style_count_query)
+    style_examples_count = style_count_result.scalar() or 0
+    
+    # Count response examples - WICHTIG: Das ist der fehlende Teil!
+    from app.models.creator import ResponseExample
+    response_count_query = select(func.count(ResponseExample.id)).where(ResponseExample.creator_id == creator_id)
+    response_count_result = await session.execute(response_count_query)
+    response_examples_count = response_count_result.scalar() or 0
+    
+    # Count individual responses (total responses across all examples)
+    from app.models.creator import CreatorResponse
+    individual_responses_query = select(func.count(CreatorResponse.id)).join(
+        ResponseExample, CreatorResponse.example_id == ResponseExample.id
+    ).where(ResponseExample.creator_id == creator_id)
+    individual_responses_result = await session.execute(individual_responses_query)
+    total_individual_responses = individual_responses_result.scalar() or 0
+    
+    # Count vector store conversations (if available)
+    try:
+        from app.models.creator import VectorStore
+        vector_count_query = select(func.count(VectorStore.id)).where(VectorStore.creator_id == creator_id)
+        vector_count_result = await session.execute(vector_count_query)
+        conversation_count = vector_count_result.scalar() or 0
+    except ImportError:
+        conversation_count = 0
+    
+    # Get style examples by category
+    style_by_category_query = select(
+        StyleExample.category,
+        func.count(StyleExample.id).label('count')
+    ).where(
+        StyleExample.creator_id == creator_id,
+        StyleExample.category.is_not(None)
+    ).group_by(StyleExample.category)
+    
+    style_by_category_result = await session.execute(style_by_category_query)
+    style_by_category = {row[0]: row[1] for row in style_by_category_result.all()}
+    
+    # Get response examples by category
+    response_by_category_query = select(
+        ResponseExample.category,
+        func.count(ResponseExample.id).label('count')
+    ).where(
+        ResponseExample.creator_id == creator_id,
+        ResponseExample.category.is_not(None)
+    ).group_by(ResponseExample.category)
+    
+    response_by_category_result = await session.execute(response_by_category_query)
+    response_by_category = {row[0]: row[1] for row in response_by_category_result.all()}
+    
+    # Get recent examples (last 5)
+    recent_style_examples_query = select(StyleExample).where(
+        StyleExample.creator_id == creator_id
+    ).order_by(StyleExample.created_at.desc()).limit(5)
+    
+    recent_style_result = await session.execute(recent_style_examples_query)
+    recent_style_examples = recent_style_result.scalars().all()
+    
+    # Check if creator has style config
+    style_config_query = select(CreatorStyle).where(CreatorStyle.creator_id == creator_id)
+    style_config_result = await session.execute(style_config_query)
+    has_style_config = style_config_result.scalar_one_or_none() is not None
+    
+    # Calculate total examples
+    total_examples = style_examples_count + response_examples_count
+    
+    return {
+        "creator_id": creator_id,
+        "creator_name": creator.name,
+        "creator_active": creator.is_active,
+        "creator_description": creator.description,
+        
+        # Main counts - This is what the frontend needs!
+        "style_examples_count": style_examples_count,
+        "response_examples_count": response_examples_count,
+        "total_individual_responses": total_individual_responses,
+        "total_examples": total_examples,
+        "conversation_count": conversation_count,
+        
+        # Category breakdowns
+        "style_examples_by_category": style_by_category,
+        "response_examples_by_category": response_by_category,
+        
+        # Recent activity
+        "recent_examples": [
+            {
+                "id": ex.id,
+                "fan_message": ex.fan_message[:100] + "..." if len(ex.fan_message) > 100 else ex.fan_message,
+                "category": ex.category,
+                "created_at": ex.created_at.isoformat()
+            }
+            for ex in recent_style_examples
+        ],
+        
+        # Configuration status
+        "has_style_config": has_style_config,
+        
+        # Timestamps
+        "created_at": creator.created_at.isoformat(),
+        "updated_at": creator.updated_at.isoformat(),
+        "stats_generated_at": datetime.utcnow().isoformat()
+    }
+
+
+# Alternative: Bulk stats endpoint for multiple creators (more efficient for overview page)
+@router.post("/bulk-stats", response_model=Dict[int, Dict[str, Any]])
+async def get_bulk_creator_statistics(
+    creator_ids: List[int] = Body(..., description="List of creator IDs to get stats for"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get statistics for multiple creators in one request (more efficient for overview page)"""
+    
+    if not creator_ids or len(creator_ids) > 50:  # Limit to prevent abuse
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide 1-50 creator IDs"
+        )
+    
+    # Verify all creators exist
+    creators_query = select(Creator).where(Creator.id.in_(creator_ids))
+    creators_result = await session.execute(creators_query)
+    creators = {c.id: c for c in creators_result.scalars().all()}
+    
+    if len(creators) != len(creator_ids):
+        missing_ids = set(creator_ids) - set(creators.keys())
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Creators not found: {list(missing_ids)}"
+        )
+    
+    # Bulk count style examples
+    style_counts_query = select(
+        StyleExample.creator_id,
+        func.count(StyleExample.id).label('count')
+    ).where(
+        StyleExample.creator_id.in_(creator_ids)
+    ).group_by(StyleExample.creator_id)
+    
+    style_counts_result = await session.execute(style_counts_query)
+    style_counts = {row[0]: row[1] for row in style_counts_result.all()}
+    
+    # Bulk count response examples
+    from app.models.creator import ResponseExample
+    response_counts_query = select(
+        ResponseExample.creator_id,
+        func.count(ResponseExample.id).label('count')
+    ).where(
+        ResponseExample.creator_id.in_(creator_ids)
+    ).group_by(ResponseExample.creator_id)
+    
+    response_counts_result = await session.execute(response_counts_query)
+    response_counts = {row[0]: row[1] for row in response_counts_result.all()}
+    
+    # Build response
+    stats_map = {}
+    for creator_id in creator_ids:
+        creator = creators[creator_id]
+        style_count = style_counts.get(creator_id, 0)
+        response_count = response_counts.get(creator_id, 0)
+        
+        stats_map[creator_id] = {
+            "creator_id": creator_id,
+            "creator_name": creator.name,
+            "creator_active": creator.is_active,
+            "style_examples_count": style_count,
+            "response_examples_count": response_count,
+            "total_examples": style_count + response_count,
+            "created_at": creator.created_at.isoformat(),
+            "updated_at": creator.updated_at.isoformat()
+        }
+    
+    return stats_map
